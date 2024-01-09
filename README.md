@@ -65,12 +65,14 @@ python3 bot.py
 ```mermaid
 flowchart TB
     %% Documentation: https://mermaid-js.github.io/mermaid/#/flowchart
-    A(("/start")):::entryPoint -->|Выбери, пожалуйста, язык / Please, select language| B((SELECTING_LANGUAGE)):::state
-    B --> |" - Ru <br /> - Eng <br />"|C("(choice)"):::userInput
-    classDef userInput  fill:#2a5279, color:#ffffff, stroke:#ffffff
+    A(("/start")):::entryPoint -->|"Выбери, пожалуйста, язык / Please, select language <br /> - Русский <br /> - English <br />"| B((SELECTING_LANGUAGE)):::state
+    B --> |"Выбери, пожалуйста, что ты хочешь сделать <br /> - Выбрать впечатление <br /> - Активировать сертификат <br /> - F.A.Q. и поддержка <br />"|C("SELECTING_ACTION"):::userChoice
+    C --> D(["end"]):::termination
+    classDef entryPoint fill:#009c11, color:#ffffff, stroke:#42FF57
     classDef state fill:#222222, color:#ffffff, stroke:#ffffff
-    classDef entryPoint fill:#009c11, stroke:#42FF57, color:#ffffff
-    classDef termination fill:#bb0007, stroke:#E60109, color:#ffffff
+    classDef userChoice fill:#009c11, color:#ffffff, stroke:#42FF57
+    classDef userInput fill:#2a5279, color:#ffffff, stroke:#ffffff
+    classDef termination fill:#bb0007, color:#ffffff, stroke:#E60109
 ```
 
 ## Цель проекта
