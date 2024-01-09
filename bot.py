@@ -7,17 +7,52 @@ from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     ContextTypes,
     CommandHandler,
+    filters,
+    MessageHandler,
     PicklePersistence
 )
 
 
-SELECTING_LANGUAGE = '1'
+START, SELECTING_LANGUAGE = [str(i) for i in range(1, 3)]
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Select a language: Russian or English."""
+async def handle_users_reply(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle all user actions."""
+    if not update.message and not update.callback_query:
+        return
+
+    user_reply = (
+        update.message.text
+        if update.message
+        else update.callback_query.data
+    )
+
+    states_functions = {
+        START: handle_start_command,
+        SELECTING_LANGUAGE: handle_language_selection
+    }
+    user_state = (
+        START
+        if user_reply == '/start'
+        else context.user_data['next_state'] or START
+    )
+    state_handler = states_functions[user_state]
+
+    next_state = await state_handler(update, context)
+    context.user_data['next_state'] = next_state
+
+
+async def handle_start_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> str:
+    """Handle the START state."""
     text = 'Выбери, пожалуйста, язык / Please, select language'
     keyboard = [[
         InlineKeyboardButton('🇷🇺 Русский', callback_data='Russian'),
@@ -26,6 +61,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(text=text, reply_markup=reply_markup)
     return SELECTING_LANGUAGE
+
+
+async def handle_language_selection(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> str:
+    """Handle the SELECTING_LANGUAGE state."""
+    pass
 
 
 def main() -> None:
@@ -51,8 +94,9 @@ def main() -> None:
         .build()
     )
 
-    start_handler = CommandHandler('start', start)
-    application.add_handler(start_handler)
+    application.add_handler(CallbackQueryHandler(handle_users_reply))
+    application.add_handler(MessageHandler(filters.Text, handle_users_reply))
+    application.add_handler(CommandHandler('start', handle_users_reply))
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
