@@ -60,20 +60,20 @@ python bot.py
 python3 bot.py
 ```
 
-## Схема чат-бота
+## Схема состояний чат-бота
 
 ```mermaid
 flowchart TB
     %% Documentation: https://mermaid-js.github.io/mermaid/#/flowchart
-    A(("/start")):::entryPoint -->|"Выбери, пожалуйста, язык / Please, select language <br /> - Русский <br /> - English <br />"| B((SELECTING_LANGUAGE)):::state
+    A((START)):::state -->|"Выбери, пожалуйста, язык / Please, select language <br /> - Русский <br /> - English <br />"| B((SELECTING_LANGUAGE)):::state
     B --> |"Выбери, пожалуйста, что ты хочешь сделать <br /> - Выбрать впечатление <br /> - Активировать сертификат <br /> - F.A.Q. и поддержка <br />"|C((SELECTING_ACTION)):::state
-    C --> D(|"end"|):::termination
-    classDef entryPoint fill:#009c11, color:#ffffff, stroke:#42FF57
+    C -->|"Выбрать впечатление"| D1((SELECTING_IMPRESSION)):::state
+    D1 -->|"Выберите впечатление: <br /> - Впечатление 1 <br /> - ... <br /> - Впечатление N"| G((IMPRESSION_NUMBER)):::state
+    C -->|"Активировать сертификат"| D2["Заглушка"]
+    C -->|"F.A.Q. и поддержка"| D3["Заглушка"]
     classDef state fill:#009c11, color:#ffffff, stroke:#42FF57
-    classDef userInput fill:#2a7963, color:#ffffff, stroke:#ffffff
-    classDef termination fill:#2a5279, color:#ffffff, stroke:#E60109
 ```
 
 ## Цель проекта
 
-Код написан для реального заказа на фрилансе.
+Код написан для заказа на фрилансе.
