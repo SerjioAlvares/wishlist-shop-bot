@@ -1,6 +1,8 @@
 # Telegram-бот для продаж сертификатов впечатлений
 
-Проект представляет Telegram-бота для продаж сертификатов впечатлений.
+Проект представляет собой Telegram-бота для продажи сертификатов впечатлений.
+
+Бот работает с базой данных и имеет админку.
 
 ## Как установить
 
@@ -59,21 +61,3 @@ python bot.py
 ```ssh
 python3 bot.py
 ```
-
-## Схема состояний чат-бота
-
-```mermaid
-flowchart TB
-    %% Documentation: https://mermaid-js.github.io/mermaid/#/flowchart
-    A((START)):::state -->|"Выбери, пожалуйста, язык / Please, select language <br /> - Русский <br /> - English <br />"| B((SELECTING_LANGUAGE)):::state
-    B --> |"Выбери, пожалуйста, что ты хочешь сделать <br /> - Выбрать впечатление <br /> - Активировать сертификат <br /> - F.A.Q. и поддержка <br />"|C((SELECTING_ACTION)):::state
-    C -->|"Выбрать впечатление"| D1((SELECTING_IMPRESSION)):::state
-    D1 -->|"Выберите впечатление: <br /> - Впечатление 1 <br /> - ... <br /> - Впечатление N"| G((IMPRESSION_NUMBER)):::state
-    C -->|"Активировать сертификат"| D2["Заглушка"]
-    C -->|"F.A.Q. и поддержка"| D3["Заглушка"]
-    classDef state fill:#009c11, color:#ffffff, stroke:#42FF57
-```
-
-## Цель проекта
-
-Код написан для заказа на фрилансе.

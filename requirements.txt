@@ -1,2 +1,4 @@
+django==4.2.9
+environs==10.2.0
 python-dotenv==0.21.1
 python-telegram-bot==20.7

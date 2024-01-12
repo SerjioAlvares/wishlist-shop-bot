@@ -1,5 +1,5 @@
 # coding=utf-8
-"""Organize the work of the selling certificates telegram bot."""
+"""Organize the work of the impressions telegram bot."""
 import logging
 import os
 
@@ -11,8 +11,7 @@ from telegram.ext import (
     ContextTypes,
     CommandHandler,
     filters,
-    MessageHandler,
-    PicklePersistence
+    MessageHandler
 )
 
 
@@ -38,14 +37,14 @@ async def handle_users_reply(
         SELECTING_LANGUAGE: handle_language_menu,
         SELECTING_ACTION: handle_action_menu
     }
-    user_state = (
+    chat_state = (
         START
         if user_reply == '/start'
-        else context.user_data.get('next_state') or START
+        else context.chat_data.get('next_state') or START
     )
-    state_handler = states_functions[int(user_state)]
+    state_handler = states_functions[int(chat_state)]
     next_state = await state_handler(update, context)
-    context.user_data['next_state'] = next_state
+    context.chat_data['next_state'] = next_state
 
 
 async def handle_start_command(
@@ -144,7 +143,7 @@ async def handle_impression_button(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle the Impression button click."""
-    text = 'Выберите впечатление:\n\n'
+    text = 'Выбери впечатление:\n\n'
     impressions = [
         {
             'name': 'Впечатление 1',
@@ -165,8 +164,9 @@ async def handle_impression_button(
     keyboard = []
     for impression_number, impression in enumerate(impressions, 1):
         text += (
-            f"*{impression_number}\.* "
-            f"[{impression['name']} \- цена {impression['price']}]"
+            f"*{impression_number}\.* "  # noqa: W605
+            f"[{impression['name']} "
+            f"\- цена {impression['price']}]"  # noqa: W605
             f"({impression['url']})\n"
         )
         if not ((impression_number - 1) % 5):
@@ -216,10 +216,8 @@ def main() -> None:
 
     load_dotenv()
     bot_token = os.environ['TELEGRAM_BOT_TOKEN']
-    persistence = PicklePersistence(
-        filepath='bot-states.pckl',
-        update_interval=1
-    )
+    persistence = DjangoPersistence()
+
     application = (
         Application.builder()
         .token(bot_token)
@@ -229,6 +227,7 @@ def main() -> None:
         .persistence(persistence)
         .build()
     )
+
     application.add_handler(CallbackQueryHandler(handle_users_reply))
     application.add_handler(MessageHandler(filters.TEXT, handle_users_reply))
     application.add_handler(CommandHandler('start', handle_users_reply))
@@ -237,4 +236,10 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+    import django
+
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'impressions.settings')
+    django.setup()
+
+    from bot.persistence import DjangoPersistence
     main()
