@@ -54,10 +54,22 @@ TELEGRAM_BOT_TOKEN=958423683:AAEAtJ5Lde5YYfkjergber
 
 В Windows:
 ```ssh
-python bot.py
+python run_bot.py
 ```
 
 В Linux:
 ```ssh
-python3 bot.py
+python3 run_bot.py
+```
+
+Для запуска админки откройте другую консоль `cmd` в Windows или терминал в Linux и наберите в командной строке команду:
+
+В Windows:
+```ssh
+python manage.py runserver
+```
+
+В Linux:
+```ssh
+python3 manage.py runserver
 ```

@@ -15,7 +15,7 @@ from telegram.ext import (
 )
 
 
-START, SELECTING_LANGUAGE, SELECTING_ACTION, SELECTING_IMPRESSION = range(1, 5)
+START, SELECTING_LANGUAGE, MAIN_MENU, SELECTING_IMPRESSION, SELECTING_DELIVERY = range(1, 6)
 
 
 async def handle_users_reply(
@@ -35,7 +35,9 @@ async def handle_users_reply(
     states_functions = {
         START: handle_start_command,
         SELECTING_LANGUAGE: handle_language_menu,
-        SELECTING_ACTION: handle_action_menu
+        MAIN_MENU: handle_main_menu,
+        SELECTING_IMPRESSION: handle_impressions_menu,
+        SELECTING_DELIVERY: handle_deliveries_menu,
     }
     chat_state = (
         START
@@ -62,12 +64,34 @@ async def handle_start_command(
     return SELECTING_LANGUAGE
 
 
-async def send_action_menu(
+async def handle_language_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle Language selecting menu."""
+    query = update.callback_query
+    if not query:
+        next_state = await handle_start_command(update, context)
+        return next_state
+
+    await update.callback_query.answer()
+    context.chat_data['language'] = update.callback_query.data
+
+    text = ''
+    if update.callback_query.data == 'english':
+        text = "Sorry, the English selection doesn't work yet.\n\n"
+        await update.callback_query.answer(text=text)
+
+    next_state = await send_main_menu(update, context, text)
+    return next_state
+
+
+async def send_main_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    text: str
+    text: str = ''
 ) -> int:
-    """Send the Action selection menu to chat."""
+    """Send Main menu to chat."""
     text = f'{text}Выбери, пожалуйста, что ты хочешь сделать'
     keyboard = [
         [
@@ -89,44 +113,24 @@ async def send_action_menu(
         text=text,
         reply_markup=reply_markup
     )
-    return SELECTING_ACTION
+    return MAIN_MENU
 
 
-async def handle_language_menu(
+async def handle_main_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Handle the Language selection menu."""
+    """Handle Main menu."""
     query = update.callback_query
     if not query:
-        next_state = await handle_start_command(update, context)
-        return next_state
-
-    await update.callback_query.answer()
-
-    text = ''
-    if query.data == 'english':
-        text = "Sorry, the English selection doesn't work yet.\n\n"
-        await update.callback_query.answer(text=text)
-
-    next_state = await send_action_menu(update, context, text)
-    return next_state
-
-
-async def handle_action_menu(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-) -> int:
-    """Handle the Action selection menu."""
-    query = update.callback_query
-    if not query:
-        next_state = await handle_start_command(update, context)
+        text = 'Извини, выбор непонятен. Попробуй ещё раз.\n\n'
+        next_state = await send_main_menu(update, context, text)
         return next_state
 
     await update.callback_query.answer()
 
     if query.data == 'impression':
-        next_state = await handle_impression_button(update, context)
+        next_state = await send_impressions_menu(update, context)
         return next_state
 
     if query.data == 'certificate':
@@ -138,51 +142,213 @@ async def handle_action_menu(
         return next_state
 
 
-async def handle_impression_button(
+def calculate_buttons_in_row(buttons_count: int) -> int:
+    """Count how many buttons to place in a row."""
+    buttons_in_row = 5
+    if buttons_count <= buttons_in_row:
+        return buttons_count
+
+    if not buttons_count % buttons_in_row:
+        if buttons_count % buttons_in_row > 1:
+            return buttons_in_row
+
+        for buttons_in_row in range(7, 3, -1):
+            if buttons_count % buttons_in_row > 1:
+                return buttons_in_row
+    return 5
+
+
+async def send_impressions_menu(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str = ''
 ) -> int:
-    """Handle the Impression button click."""
+    """Handle Impression button click."""
     impressions = await Database.get_impressions()
     if not impressions:
-        text = 'Извини впечатлений пока нет.\n'
-        next_state = await send_action_menu(update, context, text)
+        text = 'Извини, впечатлений пока нет.\n'
+        next_state = await send_main_menu(update, context, text)
         return next_state
 
-    text = 'Выбери впечатление:\n\n'
+    text = f'{text}Выбери впечатление:\n\n'
     keyboard = []
+    buttons_in_row = calculate_buttons_in_row(buttons_count=len(impressions))
     for impression_index, impression in enumerate(impressions):
-        text += (
-            f"*{impression['id']}\.* "  # noqa: W605
-            f"[{impression['name']} "
-            f"\- цена {impression['price']}]"  # noqa: W605
-            f"({impression['url']})\n"
+        impression_title = (
+            f"{impression['id']}\. "  # noqa: W605
+            f"{impression['name']} "
+            f"\- {impression['price']} ₽"  # noqa: W605
         )
-        if not (impression_index % 5):
+        text += f"[{impression_title}]({impression['url']})\n"
+        if not (impression_index % buttons_in_row):
             keyboard.append([])
         keyboard[-1].append(InlineKeyboardButton(
             f"{impression['id']}",
-            callback_data=f"impression_{impression['id']}")
+            callback_data=impression_title)
         )
+
+    keyboard.append([
+        InlineKeyboardButton(
+            '« Вернуться в главное меню',
+            callback_data='main_menu'
+        )
+    ])
 
     text += '\n'
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.callback_query.edit_message_text(
         text,
         parse_mode='MarkdownV2',
-        # disable_web_page_preview=True,
         reply_markup=reply_markup
     )
     return SELECTING_IMPRESSION
+
+
+async def handle_impressions_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle Impression selecting."""
+    query = update.callback_query
+    if not query:
+        next_state = handle_unrecognized_impression(update, context)
+        return next_state
+
+    await update.callback_query.answer()
+
+    if update.callback_query.data == 'main_menu':
+        next_state = await send_main_menu(update, context)
+        return next_state
+
+    point_index = update.callback_query.data.find('\.')  # noqa: W605
+    if point_index == -1:
+        next_state = handle_unrecognized_impression(update, context)
+        return next_state
+
+    impression_number = update.callback_query.data[:point_index]
+    print(impression_number)
+    if not impression_number.isnumeric():
+        next_state = await handle_unrecognized_impression(update, context)
+        return next_state
+
+    context.chat_data['impression'] = update.callback_query.data
+    next_state = await send_deliveries_menu(update, context)
+    return next_state
+
+
+async def handle_unrecognized_impression(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle unrecognized_impression."""
+    text = (
+        'Извини, непонятно, какое впечатление ты хочешь '  # noqa: W605
+        'выбрать\. Попробуй выбрать ещё раз\.\n\n'  # noqa: W605
+    )
+    next_state = await send_impressions_menu(update, context, text)
+    return next_state
+
+
+async def send_deliveries_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str = ''
+) -> int:
+    """Send Deliveries menu to chat."""
+    text = (
+        f'{text}Отличный выбор: Ты выбрал(а) сертификат:\n*' +
+        context.chat_data['impression'] +
+        '*\n\nВ какой форме хочешь получить его?'
+    )
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                '📧 По электронной почте',
+                callback_data='email'
+            ),
+            InlineKeyboardButton(
+                '📨 В подарочной коробке',
+                callback_data='gift_box'
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                '‹ Выбрать другое впечатление',
+                callback_data='impression'
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                '« Вернуться в главное меню',
+                callback_data='main_menu'
+            )
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.callback_query.edit_message_text(
+        text=text,
+        parse_mode='MarkdownV2',
+        reply_markup=reply_markup
+    )
+    return SELECTING_DELIVERY
+
+
+async def handle_deliveries_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle Delivery selecting."""
+    query = update.callback_query
+    if not query:
+        text = (
+            'Извини, непонятно, какой способ получения сертификата ты хочешь '
+            'выбрать\. Попробуй выбрать ещё раз\.\n\n'  # noqa: W605
+        )
+        next_state = await send_deliveries_menu(update, context, text)
+        return next_state
+
+    await update.callback_query.answer()
+
+    if update.callback_query.data == 'impression':
+        next_state = await send_impressions_menu(update, context)
+        return next_state
+
+    if update.callback_query.data == 'email':
+        next_state = await handle_email_button(update, context)
+        return next_state
+
+    if update.callback_query.data == 'gift_box':
+        next_state = await handle_gift_box_button(update, context)
+        return next_state
+
+
+async def handle_email_button(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle Email button click."""
+    text = 'Напиши почту, на которую хотел(а) бы получить сертификат:'
+    next_state = await send_main_menu(update, context, text)
+    return next_state
+
+
+async def handle_gift_box_button(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle Gift-box button click."""
+    text = "Извини, эта кнопка пока не работает.\n\n"
+    next_state = await send_main_menu(update, context, text)
+    return next_state
 
 
 async def handle_certificate_button(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Handle the Certificate button click."""
+    """Handle Certificate button click."""
     text = "Извини, эта кнопка пока не работает.\n\n"
-    next_state = await send_action_menu(update, context, text)
+    next_state = await send_main_menu(update, context, text)
     return next_state
 
 
@@ -192,7 +358,7 @@ async def handle_faq_button(
 ) -> int:
     """Handle the FAQ button click."""
     text = "Извини, эта кнопка пока не работает.\n\n"
-    next_state = await send_action_menu(update, context, text)
+    next_state = await send_main_menu(update, context, text)
     return next_state
 
 
