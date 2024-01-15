@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from bot.models import ChatData, Impression
+from bot.models import BotData, ChatData, Impression
+
+
+@admin.register(BotData)
+class BotDataAdmin(admin.ModelAdmin):
+    list_display = ('id', 'bot_name',)
+    list_display_links = ('bot_name',)
 
 
 @admin.register(ChatData)

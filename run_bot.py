@@ -404,8 +404,28 @@ async def handle_email_message(
         return WAITING_EMAIL
 
     context.chat_data['email'] = match.groups()[0]
+    policy_url = await Database.get_policy_url(context.chat_data['language'])
+    if context.chat_data['language'] == 'russian':
+        text = (
+            'Спасибо, записали 👌\n\n'
+            'Пожалуйста, ознакомься с *[Политикой конфиденциальности и '
+            f'положением об обработке персональных данных 📇]({policy_url})*'
+        )
+        button = 'Ознакомлен(а)'
+    else:
+        text = (
+            "Thanks\! We've received your email\. 👌\n\n"  # noqa: W605
+            'Please read the *[Privacy Policy and the provisions '
+            f'on the processing of personal data 📇]({policy_url})*'
+        )
+        button = 'Acquainted'
+
+    keyboard = [[InlineKeyboardButton(button, callback_data='acquainted')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        text=f"Thanks! We've received your email: {context.chat_data['email']}.\nThe sales team will write to you soon."
+        text=text,
+        parse_mode='MarkdownV2',
+        reply_markup=reply_markup
     )
 
 

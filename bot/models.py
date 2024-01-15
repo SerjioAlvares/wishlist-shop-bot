@@ -1,6 +1,26 @@
 from django.db import models
 
 
+class BotData(models.Model):
+    bot_name = models.CharField('Название бота', max_length=256)
+    english_bot_name = models.CharField(
+        'Название бота по-английски',
+        max_length=256
+    )
+    russian_policy_url = models.URLField(
+        'Url Политики конфиденциальности на русском',
+        blank=True
+    )
+    english_policy_url = models.URLField(
+        'Url Политики конфиденциальности на английском',
+        blank=True
+    )
+
+    class Meta:
+        verbose_name = 'бот'
+        verbose_name_plural = 'боты'
+
+
 class ChatData(models.Model):
     chat_id = models.BigIntegerField(
         'ID чата',

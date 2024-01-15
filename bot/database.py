@@ -1,7 +1,7 @@
 from asgiref.sync import sync_to_async
 from typing import Dict, List
 
-from .models import Impression
+from .models import BotData, Impression
 
 
 class Database():
@@ -33,3 +33,12 @@ class Database():
             }
             for impression in impressions
         ]
+
+    @sync_to_async
+    def get_policy_url(self, language: str) -> str:
+        """Get policy url from database."""
+        bot = BotData.objects.all()
+        if language == 'russian':
+            return bot[0].russian_policy_url
+
+        return bot[0].english_policy_url
