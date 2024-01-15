@@ -7,6 +7,7 @@ from bot.models import ChatData, Impression
 class ChatDataAdmin(admin.ModelAdmin):
     list_display = ('chat_id', 'data',)
 
+
 @admin.register(Impression)
 class ImpressionAdmin(admin.ModelAdmin):
     list_display = ('number', 'name', 'price_in_rubles')

@@ -2,6 +2,7 @@
 """Organize the work of the impressions telegram bot."""
 import logging
 import os
+import re
 
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -15,7 +16,8 @@ from telegram.ext import (
 )
 
 
-START, SELECTING_LANGUAGE, MAIN_MENU, SELECTING_IMPRESSION, SELECTING_DELIVERY = range(1, 6)
+(START, SELECTING_LANGUAGE, MAIN_MENU, SELECTING_IMPRESSION,
+ SELECTING_DELIVERY, WAITING_EMAIL) = range(1, 7)
 
 
 async def handle_users_reply(
@@ -38,6 +40,7 @@ async def handle_users_reply(
         MAIN_MENU: handle_main_menu,
         SELECTING_IMPRESSION: handle_impressions_menu,
         SELECTING_DELIVERY: handle_deliveries_menu,
+        WAITING_EMAIL: handle_email_message
     }
     chat_state = (
         START
@@ -77,12 +80,7 @@ async def handle_language_menu(
     await update.callback_query.answer()
     context.chat_data['language'] = update.callback_query.data
 
-    text = ''
-    if update.callback_query.data == 'english':
-        text = "Sorry, the English selection doesn't work yet.\n\n"
-        await update.callback_query.answer(text=text)
-
-    next_state = await send_main_menu(update, context, text)
+    next_state = await send_main_menu(update, context)
     return next_state
 
 
@@ -92,20 +90,29 @@ async def send_main_menu(
     text: str = ''
 ) -> int:
     """Send Main menu to chat."""
-    text = f'{text}Выбери, пожалуйста, что ты хочешь сделать'
+    if context.chat_data['language'] == 'russian':
+        message = 'Выбери, пожалуйста, что ты хочешь сделать'
+        buttons = [
+            'Выбрать впечатление',
+            'Активировать сертификат',
+            'F.A.Q. и поддержка'
+        ]
+    else:
+        message = 'Please choose what you want to do'
+        buttons = [
+            'Select an impression',
+            'Activate certificate',
+            'F.A.Q. and support'
+        ]
+
+    text = f'{text}{message}'
     keyboard = [
         [
-            InlineKeyboardButton(
-                'Выбрать впечатление',
-                callback_data='impression'
-            ),
-            InlineKeyboardButton(
-                'Активировать сертификат',
-                callback_data='certificate'
-            )
+            InlineKeyboardButton(buttons[0], callback_data='impression'),
+            InlineKeyboardButton(buttons[1], callback_data='certificate')
         ],
         [
-            InlineKeyboardButton('F.A.Q. и поддержка', callback_data='faq')
+            InlineKeyboardButton(buttons[2], callback_data='faq')
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -123,7 +130,16 @@ async def handle_main_menu(
     """Handle Main menu."""
     query = update.callback_query
     if not query:
-        text = 'Извини, выбор непонятен. Попробуй ещё раз.\n\n'
+        if context.chat_data['language'] == 'russian':
+            text = (
+                'Извини, непонятно, что ты хочешь выбрать. '
+                'Попробуй ещё раз.\n\n'
+            )
+        else:
+            text = (
+                "Sorry, it's not clear what you want to choose. "
+                "Try again.\n\n"
+            )
         next_state = await send_main_menu(update, context, text)
         return next_state
 
@@ -164,20 +180,29 @@ async def send_impressions_menu(
     text: str = ''
 ) -> int:
     """Handle Impression button click."""
-    impressions = await Database.get_impressions()
+    impressions = await Database.get_impressions(context.chat_data['language'])
     if not impressions:
-        text = 'Извини, впечатлений пока нет.\n'
+        if context.chat_data['language'] == 'russian':
+            text = 'Извини, впечатлений пока нет.\n'
+        else:
+            text = 'Sorry, no impressions yet.\n'
         next_state = await send_main_menu(update, context, text)
         return next_state
 
-    text = f'{text}Выбери впечатление:\n\n'
+    if context.chat_data['language'] == 'russian':
+        text = f'{text}Выбери впечатление:\n\n'
+        button = '« Вернуться в главное меню'
+    else:
+        text = f'{text}Choose an impression:\n\n'
+        button = '« Back to main menu'
+
     keyboard = []
     buttons_in_row = calculate_buttons_in_row(buttons_count=len(impressions))
     for impression_index, impression in enumerate(impressions):
         impression_title = (
             f"{impression['id']}\. "  # noqa: W605
             f"{impression['name']} "
-            f"\- {impression['price']} ₽"  # noqa: W605
+            f"\- {impression['price']}"  # noqa: W605
         )
         text += f"[{impression_title}]({impression['url']})\n"
         if not (impression_index % buttons_in_row):
@@ -187,12 +212,7 @@ async def send_impressions_menu(
             callback_data=impression_title)
         )
 
-    keyboard.append([
-        InlineKeyboardButton(
-            '« Вернуться в главное меню',
-            callback_data='main_menu'
-        )
-    ])
+    keyboard.append([InlineKeyboardButton(button, callback_data='main_menu')])
 
     text += '\n'
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -241,10 +261,17 @@ async def handle_unrecognized_impression(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle unrecognized_impression."""
-    text = (
-        'Извини, непонятно, какое впечатление ты хочешь '  # noqa: W605
-        'выбрать\. Попробуй выбрать ещё раз\.\n\n'  # noqa: W605
-    )
+    if context.chat_data['language'] == 'russian':
+        text = (
+            'Извини, непонятно, какое впечатление ты хочешь '  # noqa: W605
+            'выбрать\. Попробуй выбрать ещё раз\.\n\n'  # noqa: W605
+        )
+    else:
+        text = (
+            "Sorry, it's not clear which experience you want to "
+            "choose\. Try choosing again\.\n\n"  # noqa: W605
+        )
+
     next_state = await send_impressions_menu(update, context, text)
     return next_state
 
@@ -255,33 +282,43 @@ async def send_deliveries_menu(
     text: str = ''
 ) -> int:
     """Send Deliveries menu to chat."""
-    text = (
-        f'{text}Отличный выбор: Ты выбрал(а) сертификат:\n*' +
-        context.chat_data['impression'] +
-        '*\n\nВ какой форме хочешь получить его?'
-    )
+    if context.chat_data['language'] == 'russian':
+        text = (
+            f'{text}Отличный выбор\! Ты выбрал\(а\) ' +  # noqa: W605
+            'сертификат:\n*' +
+            context.chat_data['impression'] +
+            '*\n\nВ какой форме хочешь получить его?'
+        )
+        buttons = [
+            '📧 По электронной почте',
+            '📨 В подарочной коробке',
+            '‹ Выбрать другое впечатление',
+            '« Вернуться в главное меню'
+        ]
+    else:
+        text = (
+            f'{text}Great choice\! You chose ' +  # noqa: W605
+            'the certificate:\n*' +
+            context.chat_data['impression'] +
+            '*\n\nIn what form do you want to receive it?'
+        )
+        buttons = [
+            '📧 By email',
+            '📨 In a gift box',
+            '‹ Choose a different impression',
+            '« Back to main menu'
+        ]
+
     keyboard = [
         [
-            InlineKeyboardButton(
-                '📧 По электронной почте',
-                callback_data='email'
-            ),
-            InlineKeyboardButton(
-                '📨 В подарочной коробке',
-                callback_data='gift_box'
-            ),
+            InlineKeyboardButton(buttons[0], callback_data='email'),
+            InlineKeyboardButton(buttons[1], callback_data='gift_box'),
         ],
         [
-            InlineKeyboardButton(
-                '‹ Выбрать другое впечатление',
-                callback_data='impression'
-            )
+            InlineKeyboardButton(buttons[2], callback_data='impression')
         ],
         [
-            InlineKeyboardButton(
-                '« Вернуться в главное меню',
-                callback_data='main_menu'
-            )
+            InlineKeyboardButton(buttons[3], callback_data='main_menu')
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -300,10 +337,18 @@ async def handle_deliveries_menu(
     """Handle Delivery selecting."""
     query = update.callback_query
     if not query:
-        text = (
-            'Извини, непонятно, какой способ получения сертификата ты хочешь '
-            'выбрать\. Попробуй выбрать ещё раз\.\n\n'  # noqa: W605
-        )
+        if context.chat_data['language'] == 'russian':
+            text = (
+                'Извини, непонятно, какой способ получения сертификата ты '
+                'хочешь выбрать\. Попробуй выбрать ещё раз\.\n\n'  # noqa: W605
+            )
+        else:
+            text = (
+                'Sorry, it is not clear which method of obtaining '
+                'the certificate you want to choose\. '  # noqa: W605
+                'Try choosing again\.\n\n'  # noqa: W605
+            )
+
         next_state = await send_deliveries_menu(update, context, text)
         return next_state
 
@@ -327,9 +372,41 @@ async def handle_email_button(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle Email button click."""
-    text = 'Напиши почту, на которую хотел(а) бы получить сертификат:'
-    next_state = await send_main_menu(update, context, text)
-    return next_state
+    if context.chat_data['language'] == 'russian':
+        text = 'Напиши почту, на которую хотел(а) бы получить сертификат:'
+    else:
+        text = (
+            'Write the email to which you would like to receive '
+            'the certificate:'
+        )
+
+    await update.callback_query.edit_message_text(text=text)
+    return WAITING_EMAIL
+
+
+async def handle_email_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle the WAITING_EMAIL state."""
+    pattern = r'(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)'
+    match = re.match(pattern, update.message.text)
+    if not match:
+        if context.chat_data['language'] == 'russian':
+            text = (
+                'Ошибка в написании электронной почты.\n'
+                'Пожалуйста, пришли нам свой адрес электронной почты:'
+            )
+        else:
+            text = 'Email spelling error.\nPlease send us your email:'
+
+        await update.message.reply_text(text=text)
+        return WAITING_EMAIL
+
+    context.chat_data['email'] = match.groups()[0]
+    await update.message.reply_text(
+        text=f"Thanks! We've received your email: {context.chat_data['email']}.\nThe sales team will write to you soon."
+    )
 
 
 async def handle_gift_box_button(
