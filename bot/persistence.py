@@ -16,7 +16,7 @@ from .models import ChatData
 
 
 class DjangoPersistence(BasePersistence):
-    """Using Django's ChatData model for making a bot persistent."""
+    """Use Django's ChatData model for making a bot persistent."""
     def __init__(self):
         store_data = PersistenceInput(
             chat_data=True,
@@ -29,7 +29,7 @@ class DjangoPersistence(BasePersistence):
 
     @sync_to_async
     def get_chat_data(self) -> Dict[int, CD]:
-        """Returns the chat_data from the Database if it exists or
+        """Return the chat_data from the Database if it exists or
            an empty :obj:`dict`.
 
         Returns:
@@ -59,7 +59,7 @@ class DjangoPersistence(BasePersistence):
 
     @sync_to_async
     def update_chat_data(self, chat_id: int, data: CD) -> None:
-        """Will update the chat_data and save them in Database.
+        """Update the chat_data and save them in Database.
 
         Args:
             chat_id (:obj:`int`): The chat the data might have been
@@ -102,7 +102,7 @@ class DjangoPersistence(BasePersistence):
 
     @sync_to_async
     def drop_chat_data(self, chat_id: int) -> None:
-        """Will delete the specified key from the ``chat_data`` and
+        """Delete the specified key from the ``chat_data`` and
         save them in Database.
 
         .. versionadded:: 20.0
@@ -125,7 +125,7 @@ class DjangoPersistence(BasePersistence):
 
     @sync_to_async
     def refresh_chat_data(self, chat_id: int, chat_data: CD) -> None:
-        """Does nothing.
+        """Do nothing.
 
         .. versionadded:: 13.6
         .. seealso:: :meth:`telegram.ext.BasePersistence.refresh_user_data`

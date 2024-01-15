@@ -13,3 +13,15 @@ class ChatData(models.Model):
     class Meta:
         verbose_name = 'чат'
         verbose_name_plural = 'чаты'
+
+
+class Impression(models.Model):
+    number = models.PositiveIntegerField('Номер', unique=True)
+    name = models.CharField('Наименование', max_length=256)
+    price_in_rubles = models.PositiveIntegerField('Цена в рублях')
+    url_for_russians = models.URLField('Url русского описания', blank=True)
+
+    class Meta:
+        ordering = ['number']
+        verbose_name = 'впечатление'
+        verbose_name_plural = 'впечатления'

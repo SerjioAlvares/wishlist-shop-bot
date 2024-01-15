@@ -143,37 +143,26 @@ async def handle_impression_button(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle the Impression button click."""
+    impressions = await Database.get_impressions()
+    if not impressions:
+        text = 'Извини впечатлений пока нет.\n'
+        next_state = await send_action_menu(update, context, text)
+        return next_state
+
     text = 'Выбери впечатление:\n\n'
-    impressions = [
-        {
-            'name': 'Впечатление 1',
-            'price': '1',
-            'url': 'https://telegra.ph/product1'
-        },
-        {
-            'name': 'Впечатление 2',
-            'price': '2',
-            'url': 'https://telegra.ph/product2'
-        },
-        {
-            'name': 'Впечатление 3',
-            'price': '3',
-            'url': 'https://telegra.ph/product3'
-        },
-    ]
     keyboard = []
-    for impression_number, impression in enumerate(impressions, 1):
+    for impression_index, impression in enumerate(impressions):
         text += (
-            f"*{impression_number}\.* "  # noqa: W605
+            f"*{impression['id']}\.* "  # noqa: W605
             f"[{impression['name']} "
             f"\- цена {impression['price']}]"  # noqa: W605
             f"({impression['url']})\n"
         )
-        if not ((impression_number - 1) % 5):
+        if not (impression_index % 5):
             keyboard.append([])
         keyboard[-1].append(InlineKeyboardButton(
-            f'{impression_number}',
-            callback_data=f'impression_{impression_number}')
+            f"{impression['id']}",
+            callback_data=f"impression_{impression['id']}")
         )
 
     text += '\n'
@@ -242,4 +231,5 @@ if __name__ == '__main__':
     django.setup()
 
     from bot.persistence import DjangoPersistence
+    from bot.database import Database
     main()
