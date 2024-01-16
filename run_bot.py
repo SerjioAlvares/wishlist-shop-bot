@@ -4,6 +4,7 @@ import logging
 import os
 import re
 
+import phonenumbers
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -17,8 +18,8 @@ from telegram.ext import (
 
 
 (START, SELECTING_LANGUAGE, MAIN_MENU, SELECTING_IMPRESSION,
- SELECTING_DELIVERY, WAITING_EMAIL, ACQUAINTED_PRIVACY_POLICY,
- WAITING_FULLNAME) = range(1, 9)
+ SELECTING_RECEIVING_METHOD, WAITING_EMAIL, ACQUAINTED_PRIVACY_POLICY,
+ WAITING_FULLNAME, WAITING_PHONE_NUMBER) = range(1, 10)
 
 
 async def handle_users_reply(
@@ -40,10 +41,11 @@ async def handle_users_reply(
         SELECTING_LANGUAGE: handle_language_menu,
         MAIN_MENU: handle_main_menu,
         SELECTING_IMPRESSION: handle_impressions_menu,
-        SELECTING_DELIVERY: handle_deliveries_menu,
+        SELECTING_RECEIVING_METHOD: handle_receiving_methods_menu,
         WAITING_EMAIL: handle_email_message,
         ACQUAINTED_PRIVACY_POLICY: handle_privacy_policy_button,
         WAITING_FULLNAME: handle_fullname_message,
+        WAITING_PHONE_NUMBER: handle_phone_number_message,
     }
     chat_state = (
         START
@@ -255,7 +257,7 @@ async def handle_impressions_menu(
         return next_state
 
     context.chat_data['impression'] = update.callback_query.data
-    next_state = await send_deliveries_menu(update, context)
+    next_state = await send_receiving_methods_menu(update, context)
     return next_state
 
 
@@ -279,12 +281,12 @@ async def handle_unrecognized_impression(
     return next_state
 
 
-async def send_deliveries_menu(
+async def send_receiving_methods_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     text: str = ''
 ) -> int:
-    """Send Deliveries menu to chat."""
+    """Send to chat Menu of ways to receive order."""
     if context.chat_data['language'] == 'russian':
         text = (
             f'{text}Отличный выбор\! Ты выбрал\(а\) ' +  # noqa: W605
@@ -330,14 +332,14 @@ async def send_deliveries_menu(
         parse_mode='MarkdownV2',
         reply_markup=reply_markup
     )
-    return SELECTING_DELIVERY
+    return SELECTING_RECEIVING_METHOD
 
 
-async def handle_deliveries_menu(
+async def handle_receiving_methods_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Handle Delivery selecting."""
+    """Handle Receipt method selecting."""
     query = update.callback_query
     if not query:
         if context.chat_data['language'] == 'russian':
@@ -347,12 +349,12 @@ async def handle_deliveries_menu(
             )
         else:
             text = (
-                'Sorry, it is not clear which method of obtaining '
-                'the certificate you want to choose\. '  # noqa: W605
+                "Sorry, it's not clear which method of receiving "
+                'your certificate you want to choose\. '  # noqa: W605
                 'Try choosing again\.\n\n'  # noqa: W605
             )
 
-        next_state = await send_deliveries_menu(update, context, text)
+        next_state = await send_receiving_methods_menu(update, context, text)
         return next_state
 
     await update.callback_query.answer()
@@ -496,6 +498,73 @@ async def send_phone_number_prompt(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Send prompt to enter phone number to chat."""
+    if context.chat_data['language'] == 'russian':
+        text = 'Оставь, пожалуйста, свой контактный номер телефона:'
+    else:
+        text = 'Please write your contact phone number:'
+
+    await update.message.reply_text(text=text)
+    return WAITING_PHONE_NUMBER
+
+
+async def handle_phone_number_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle the WAITING_PHONE_NUMBER state."""
+    value = update.message.text.strip()
+    error = not bool(value)
+    if not error:
+        if value[0] == '8':
+            value = '+7' + value[1:]
+
+        try:
+            value = phonenumbers.parse(value)
+        except phonenumbers.phonenumberutil.NumberParseException:
+            error = True
+
+        if not error:
+            error = not phonenumbers.is_valid_number(value)
+
+    if error:
+        if context.chat_data['language'] == 'russian':
+            text = (
+                'Введён некорректный номер телефона.\n'
+                'Пожалуйста, пришли нам свой номер телефона:'
+            )
+        else:
+            text = (
+                'Phone number spelling error.\n'
+                'Please send us your phone number:'
+            )
+
+        await update.message.reply_text(text=text)
+        return WAITING_PHONE_NUMBER
+
+    context.chat_data['phone_number'] = (
+        f'+{value.country_code}{value.national_number}'
+    )
+    if context.chat_data['delivery'] == 'email':
+        next_state = await send_payment_details(update, context)
+        return next_state
+
+    next_state = await send_delivery_methods_menu(update, context)
+    return next_state
+
+
+async def send_payment_details(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Send Payment details and wait for payment screenshot."""
+    pass
+
+
+async def send_delivery_methods_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Send Delivery methods menu."""
     pass
 
 
