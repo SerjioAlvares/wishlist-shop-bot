@@ -17,7 +17,8 @@ from telegram.ext import (
 
 
 (START, SELECTING_LANGUAGE, MAIN_MENU, SELECTING_IMPRESSION,
- SELECTING_DELIVERY, WAITING_EMAIL) = range(1, 7)
+ SELECTING_DELIVERY, WAITING_EMAIL, ACQUAINTED_PRIVACY_POLICY,
+ WAITING_FULLNAME) = range(1, 9)
 
 
 async def handle_users_reply(
@@ -40,7 +41,9 @@ async def handle_users_reply(
         MAIN_MENU: handle_main_menu,
         SELECTING_IMPRESSION: handle_impressions_menu,
         SELECTING_DELIVERY: handle_deliveries_menu,
-        WAITING_EMAIL: handle_email_message
+        WAITING_EMAIL: handle_email_message,
+        ACQUAINTED_PRIVACY_POLICY: handle_privacy_policy_button,
+        WAITING_FULLNAME: handle_fullname_message,
     }
     chat_state = (
         START
@@ -179,7 +182,7 @@ async def send_impressions_menu(
     context: ContextTypes.DEFAULT_TYPE,
     text: str = ''
 ) -> int:
-    """Handle Impression button click."""
+    """Send Impressions menu."""
     impressions = await Database.get_impressions(context.chat_data['language'])
     if not impressions:
         if context.chat_data['language'] == 'russian':
@@ -372,6 +375,7 @@ async def handle_email_button(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle Email button click."""
+    context.chat_data['delivery'] = 'email'
     if context.chat_data['language'] == 'russian':
         text = 'Напиши почту, на которую хотел(а) бы получить сертификат:'
     else:
@@ -379,7 +383,6 @@ async def handle_email_button(
             'Write the email to which you would like to receive '
             'the certificate:'
         )
-
     await update.callback_query.edit_message_text(text=text)
     return WAITING_EMAIL
 
@@ -390,7 +393,7 @@ async def handle_email_message(
 ) -> int:
     """Handle the WAITING_EMAIL state."""
     pattern = r'(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)'
-    match = re.match(pattern, update.message.text)
+    match = re.match(pattern, update.message.text.strip())
     if not match:
         if context.chat_data['language'] == 'russian':
             text = (
@@ -404,6 +407,25 @@ async def handle_email_message(
         return WAITING_EMAIL
 
     context.chat_data['email'] = match.groups()[0]
+    next_state = await send_privacy_policy(update, context)
+    return next_state
+
+
+async def handle_gift_box_button(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle Gift-box button click."""
+    context.chat_data['delivery'] = 'gift_box'
+    next_state = await send_privacy_policy(update, context)
+    return next_state
+
+
+async def send_privacy_policy(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Send Privacy Policy to chat."""
     policy_url = await Database.get_policy_url(context.chat_data['language'])
     if context.chat_data['language'] == 'russian':
         text = (
@@ -414,29 +436,67 @@ async def handle_email_message(
         button = 'Ознакомлен(а)'
     else:
         text = (
-            "Thanks\! We've received your email\. 👌\n\n"  # noqa: W605
+            'Thank you, we wrote it down 👌\n\n'
             'Please read the *[Privacy Policy and the provisions '
             f'on the processing of personal data 📇]({policy_url})*'
         )
         button = 'Acquainted'
 
-    keyboard = [[InlineKeyboardButton(button, callback_data='acquainted')]]
+    keyboard = [[InlineKeyboardButton(button, callback_data='privacy_policy')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         text=text,
         parse_mode='MarkdownV2',
         reply_markup=reply_markup
     )
+    return ACQUAINTED_PRIVACY_POLICY
 
 
-async def handle_gift_box_button(
+async def handle_privacy_policy_button(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Handle Gift-box button click."""
-    text = "Извини, эта кнопка пока не работает.\n\n"
-    next_state = await send_main_menu(update, context, text)
+    """Handle Privacy Policy button click."""
+    if context.chat_data['language'] == 'russian':
+        text = 'Введи, пожалуйста, свои фамилию и имя (кириллицей):'
+    else:
+        text = 'Please write your first and last name:'
+    await update.callback_query.edit_message_text(text=text)
+    return WAITING_FULLNAME
+
+
+async def handle_fullname_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle the WAITING_FULLNAME state."""
+    fullname = update.message.text.strip()
+    if len(fullname) < 4 or ' ' not in fullname:
+        if context.chat_data['language'] == 'russian':
+            text = (
+                'Ошибка в написании фамилии и имени.\n'
+                'Пожалуйста, пришли нам свои фамилию и имя (кириллицей):'
+            )
+        else:
+            text = (
+                'First and last name spelling error.\n'
+                'Please send us your first and last name:'
+            )
+
+        await update.message.reply_text(text=text)
+        return WAITING_FULLNAME
+
+    context.chat_data['fullname'] = fullname
+    next_state = await send_phone_number_prompt(update, context)
     return next_state
+
+
+async def send_phone_number_prompt(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Send prompt to enter phone number to chat."""
+    pass
 
 
 async def handle_certificate_button(
