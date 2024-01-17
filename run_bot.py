@@ -15,7 +15,6 @@ from telegram.ext import (
     filters,
     MessageHandler
 )
-from telegram.helpers import escape_markdown
 
 
 (START, SELECTING_LANGUAGE, MAIN_MENU, SELECTING_IMPRESSION,
@@ -37,7 +36,6 @@ async def handle_users_reply(
         if update.message
         else update.callback_query.data
     )
-
     states_functions = {
         START: handle_start_command,
         SELECTING_LANGUAGE: handle_language_menu,
@@ -81,8 +79,7 @@ async def handle_language_menu(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle Language selecting menu."""
-    query = update.callback_query
-    if not query:
+    if not update.callback_query:
         next_state = await handle_start_command(update, context)
         return next_state
 
@@ -125,10 +122,21 @@ async def send_main_menu(
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.callback_query.edit_message_text(
-        text=text,
-        reply_markup=reply_markup
-    )
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=reply_markup
+        )
+        return MAIN_MENU
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=reply_markup
+        )
+        return MAIN_MENU
+
+    await update.message.reply_text(text=text, reply_markup=reply_markup)
     return MAIN_MENU
 
 
@@ -137,8 +145,7 @@ async def handle_main_menu(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle Main menu."""
-    query = update.callback_query
-    if not query:
+    if not update.callback_query:
         if context.chat_data['language'] == 'russian':
             text = (
                 'Извини, непонятно, что ты хочешь выбрать. '
@@ -154,15 +161,15 @@ async def handle_main_menu(
 
     await update.callback_query.answer()
 
-    if query.data == 'impression':
+    if update.callback_query.data == 'impression':
         next_state = await send_impressions_menu(update, context)
         return next_state
 
-    if query.data == 'certificate':
+    if update.callback_query.data == 'certificate':
         next_state = await handle_certificate_button(update, context)
         return next_state
 
-    if query.data == 'faq':
+    if update.callback_query.data == 'faq':
         next_state = await handle_faq_button(update, context)
         return next_state
 
@@ -225,8 +232,16 @@ async def send_impressions_menu(
 
     text += '\n'
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.callback_query.edit_message_text(
-        text,
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text,
+            parse_mode='MarkdownV2',
+            reply_markup=reply_markup
+        )
+        return SELECTING_IMPRESSION
+
+    await update.message.reply_text(
+        text=text,
         parse_mode='MarkdownV2',
         reply_markup=reply_markup
     )
@@ -251,9 +266,8 @@ async def handle_impressions_menu(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle Impression selecting."""
-    query = update.callback_query
-    if not query:
-        next_state = handle_unrecognized_impression(update, context)
+    if not update.callback_query:
+        next_state = await handle_unrecognized_impression(update, context)
         return next_state
 
     await update.callback_query.answer()
@@ -264,11 +278,10 @@ async def handle_impressions_menu(
 
     point_index = update.callback_query.data.find(normalise_text('.'))
     if point_index == -1:
-        next_state = handle_unrecognized_impression(update, context)
+        next_state = await handle_unrecognized_impression(update, context)
         return next_state
 
     impression_number = update.callback_query.data[:point_index]
-    print(impression_number)
     if not impression_number.isnumeric():
         next_state = await handle_unrecognized_impression(update, context)
         return next_state
@@ -286,12 +299,12 @@ async def handle_unrecognized_impression(
     if context.chat_data['language'] == 'russian':
         text = (
             'Извини, непонятно, какое впечатление ты хочешь '
-            'выбрать. Попробуй выбрать ещё раз.\n\n'
+            'выбрать. Попробуй ещё раз.\n\n'
         )
     else:
         text = (
             "Sorry, it's not clear which experience you want to "
-            "choose. Try choosing again.\n\n"
+            "choose. Try again.\n\n"
         )
 
     next_state = await send_impressions_menu(update, context, text)
@@ -344,7 +357,15 @@ async def send_receiving_methods_menu(
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.callback_query.edit_message_text(
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text=text,
+            parse_mode='MarkdownV2',
+            reply_markup=reply_markup
+        )
+        return SELECTING_RECEIVING_METHOD
+
+    await update.message.reply_text(
         text=text,
         parse_mode='MarkdownV2',
         reply_markup=reply_markup
@@ -357,24 +378,26 @@ async def handle_receiving_methods_menu(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle Receipt method selecting."""
-    query = update.callback_query
-    if not query:
+    if not update.callback_query:
         if context.chat_data['language'] == 'russian':
             text = (
                 'Извини, непонятно, какой способ получения сертификата ты '
-                'хочешь выбрать. Попробуй выбрать ещё раз.\n\n'
+                'хочешь выбрать. Попробуй ещё раз.\n\n'
             )
         else:
             text = (
                 "Sorry, it's not clear which method of receiving "
                 'your certificate you want to choose. '
-                'Try choosing again.\n\n'
+                'Try again.\n\n'
             )
-
         next_state = await send_receiving_methods_menu(update, context, text)
         return next_state
 
     await update.callback_query.answer()
+
+    if update.callback_query.data == 'main_menu':
+        next_state = await send_main_menu(update, context)
+        return next_state
 
     if update.callback_query.data == 'impression':
         next_state = await send_impressions_menu(update, context)
@@ -476,6 +499,10 @@ async def handle_privacy_policy_button(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle Privacy Policy button click."""
+    if not update.callback_query:
+        next_state = await send_privacy_policy(update, context)
+        return next_state
+
     if context.chat_data['language'] == 'russian':
         text = 'Введи, пожалуйста, свои фамилию и имя (кириллицей):'
     else:
@@ -613,9 +640,9 @@ async def handle_payment_screenshot(
             )
         await send_payment_details(update, context, text)
 
-    photo_id = update.message.photo[-1].file_id
-    screenshot_file = context.bot.get_file(photo_id)
-    screenshot_file.download('screenshot.jpg')
+    file_id = update.message.photo[-1].file_id
+    file = await context.bot.get_file(file_id)
+    screenshot_file = await file.download_to_drive('screenshot.jpg')
 
     if context.chat_data['language'] == 'russian':
         text = (
@@ -632,10 +659,7 @@ async def handle_payment_screenshot(
 
     keyboard = [[InlineKeyboardButton(button, callback_data='dialogue_end')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.callback_query.edit_message_text(
-        text=text,
-        reply_markup=reply_markup
-    )
+    await update.message.reply_text(text=text, reply_markup=reply_markup)
     return DIALOGUE_END
 
 
@@ -644,7 +668,9 @@ async def handle_dialogue_end(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle end of dialogue."""
-    pass
+    if update.callback_query:
+        await update.callback_query.answer()
+    return 0
 
 
 async def send_delivery_methods_menu(
@@ -698,6 +724,7 @@ def main() -> None:
 
     application.add_handler(CallbackQueryHandler(handle_users_reply))
     application.add_handler(MessageHandler(filters.TEXT, handle_users_reply))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_users_reply))
     application.add_handler(CommandHandler('start', handle_users_reply))
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
