@@ -15,12 +15,13 @@ from telegram.ext import (
     filters,
     MessageHandler
 )
+from telegram.helpers import escape_markdown
 
 
 (START, SELECTING_LANGUAGE, MAIN_MENU, SELECTING_IMPRESSION,
  SELECTING_RECEIVING_METHOD, WAITING_EMAIL, ACQUAINTED_PRIVACY_POLICY,
  WAITING_FULLNAME, WAITING_PHONE_NUMBER,
- WAITING_PAYMENT_SCREENSHOT) = range(1, 11)
+ WAITING_PAYMENT_SCREENSHOT, DIALOGUE_END) = range(1, 12)
 
 
 async def handle_users_reply(
@@ -48,6 +49,7 @@ async def handle_users_reply(
         WAITING_FULLNAME: handle_fullname_message,
         WAITING_PHONE_NUMBER: handle_phone_number_message,
         WAITING_PAYMENT_SCREENSHOT: handle_payment_screenshot,
+        DIALOGUE_END: handle_dialogue_end
     }
     chat_state = (
         START
@@ -94,7 +96,7 @@ async def handle_language_menu(
 async def send_main_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    text: str=''
+    text: str = ''
 ) -> int:
     """Send Main menu to chat."""
     if context.chat_data['language'] == 'russian':
@@ -184,7 +186,7 @@ def calculate_buttons_in_row(buttons_count: int) -> int:
 async def send_impressions_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    text: str=''
+    text: str = ''
 ) -> int:
     """Send Impressions menu."""
     impressions = await Database.get_impressions(context.chat_data['language'])
@@ -197,19 +199,19 @@ async def send_impressions_menu(
         return next_state
 
     if context.chat_data['language'] == 'russian':
-        text = f'{text}Выбери впечатление:\n\n'
+        text = f'{normalise_text(text)}Выбери впечатление:\n\n'
         button = '« Вернуться в главное меню'
     else:
-        text = f'{text}Choose an impression:\n\n'
+        text = f'{normalise_text(text)}Choose an impression:\n\n'
         button = '« Back to main menu'
 
     keyboard = []
     buttons_in_row = calculate_buttons_in_row(buttons_count=len(impressions))
     for impression_index, impression in enumerate(impressions):
-        impression_title = (
-            f"{impression['id']}\. "  # noqa: W605
+        impression_title = normalise_text(
+            f"{impression['id']}. "
             f"{impression['name']} "
-            f"\- {impression['price']}"  # noqa: W605
+            f"- {impression['price']}"
         )
         text += f"[{impression_title}]({impression['url']})\n"
         if not (impression_index % buttons_in_row):
@@ -231,6 +233,19 @@ async def send_impressions_menu(
     return SELECTING_IMPRESSION
 
 
+def normalise_text(text: str) -> str:
+    """Normalise text for parsing in Telegram."""
+    escape_chars = r'_[]()~`>#+-=|{}.!'
+    new_text = ''
+    old_character = ''
+    for character in text:
+        if character in escape_chars and old_character != '\\':
+            new_text += '\\'
+        new_text += character
+        old_character = character
+    return new_text
+
+
 async def handle_impressions_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -247,7 +262,7 @@ async def handle_impressions_menu(
         next_state = await send_main_menu(update, context)
         return next_state
 
-    point_index = update.callback_query.data.find('\.')  # noqa: W605
+    point_index = update.callback_query.data.find(normalise_text('.'))
     if point_index == -1:
         next_state = handle_unrecognized_impression(update, context)
         return next_state
@@ -270,13 +285,13 @@ async def handle_unrecognized_impression(
     """Handle unrecognized_impression."""
     if context.chat_data['language'] == 'russian':
         text = (
-            'Извини, непонятно, какое впечатление ты хочешь '  # noqa: W605
-            'выбрать\. Попробуй выбрать ещё раз\.\n\n'  # noqa: W605
+            'Извини, непонятно, какое впечатление ты хочешь '
+            'выбрать. Попробуй выбрать ещё раз.\n\n'
         )
     else:
         text = (
             "Sorry, it's not clear which experience you want to "
-            "choose\. Try choosing again\.\n\n"  # noqa: W605
+            "choose. Try choosing again.\n\n"
         )
 
     next_state = await send_impressions_menu(update, context, text)
@@ -286,12 +301,12 @@ async def handle_unrecognized_impression(
 async def send_receiving_methods_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    text: str=''
+    text: str = ''
 ) -> int:
     """Send to chat Menu of ways to receive order."""
     if context.chat_data['language'] == 'russian':
-        text = (
-            f'{text}Отличный выбор\! Ты выбрал\(а\) ' +  # noqa: W605
+        text = normalise_text(
+            f'{text}Отличный выбор! Ты выбрал(а) ' +
             'сертификат:\n*' +
             context.chat_data['impression'] +
             '*\n\nВ какой форме хочешь получить его?'
@@ -303,8 +318,8 @@ async def send_receiving_methods_menu(
             '« Вернуться в главное меню'
         ]
     else:
-        text = (
-            f'{text}Great choice\! You chose ' +  # noqa: W605
+        text = normalise_text(
+            f'{text}Great choice! You chose ' +
             'the certificate:\n*' +
             context.chat_data['impression'] +
             '*\n\nIn what form do you want to receive it?'
@@ -347,13 +362,13 @@ async def handle_receiving_methods_menu(
         if context.chat_data['language'] == 'russian':
             text = (
                 'Извини, непонятно, какой способ получения сертификата ты '
-                'хочешь выбрать\. Попробуй выбрать ещё раз\.\n\n'  # noqa: W605
+                'хочешь выбрать. Попробуй выбрать ещё раз.\n\n'
             )
         else:
             text = (
                 "Sorry, it's not clear which method of receiving "
-                'your certificate you want to choose\. '  # noqa: W605
-                'Try choosing again\.\n\n'  # noqa: W605
+                'your certificate you want to choose. '
+                'Try choosing again.\n\n'
             )
 
         next_state = await send_receiving_methods_menu(update, context, text)
@@ -556,24 +571,31 @@ async def handle_phone_number_message(
 
 async def send_payment_details(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str = ''
 ) -> int:
     """Send Payment details and wait for payment screenshot."""
-    payment_details = Database.get_payment_details()
+    payment_details = await Database.get_payment_details(
+        context.chat_data['language']
+    )
+    payment_details = normalise_text(payment_details)
     if context.chat_data['language'] == 'russian':
         text = (
-            'Оплатить покупку можно по указанным реквизитам:\n*' +
+            text +
+            'Оплатить покупку можно по указанным реквизитам:\n\n*' +
             payment_details +
-            '\n*После оплаты отправь здесь скриншот с подтверждением оплаты:'
+            '\n\n*После оплаты отправь нам скриншот с подтверждением оплаты:'
         )
     else:
         text = (
-            'You can pay for the purchase by the specified details:\n*' +
+            text +
+            'You can pay for the purchase by the specified details:\n\n*' +
             payment_details +
-            '\n*After payment, post a screenshot here with proof of payment'
+            '\n\n*After payment, send us a screenshot with payment:'
+            'confirmation'
         )
-        await update.message.reply_text(text=text, parse_mode='MarkdownV2')
-        return WAITING_PAYMENT_SCREENSHOT
+    await update.message.reply_text(text=text, parse_mode='MarkdownV2')
+    return WAITING_PAYMENT_SCREENSHOT
 
 
 async def handle_payment_screenshot(
@@ -581,6 +603,47 @@ async def handle_payment_screenshot(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Process receipt of screenshot of payment."""
+    if not update.message.photo:
+        if context.chat_data['language'] == 'russian':
+            text = 'Ты прислал не скриншот оплаты.\n\n'
+        else:
+            text = (
+                "You didn't send a screenshot "
+                "of the payment.n\n"
+            )
+        await send_payment_details(update, context, text)
+
+    photo_id = update.message.photo[-1].file_id
+    screenshot_file = context.bot.get_file(photo_id)
+    screenshot_file.download('screenshot.jpg')
+
+    if context.chat_data['language'] == 'russian':
+        text = (
+            'Спасибо за покупку! Мы всё проверим '
+            'и в ближайшее время тебе напишет оператор 🎆'
+        )
+        button = 'Спасибо 👌'
+    else:
+        text = (
+            'Thank you for your purchase! We will check everything '
+            'and an operator will write to you shortly 🎆'
+        )
+        button = 'Thanks 👌'
+
+    keyboard = [[InlineKeyboardButton(button, callback_data='dialogue_end')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.callback_query.edit_message_text(
+        text=text,
+        reply_markup=reply_markup
+    )
+    return DIALOGUE_END
+
+
+async def handle_dialogue_end(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle end of dialogue."""
     pass
 
 
