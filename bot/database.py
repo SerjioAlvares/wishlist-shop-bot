@@ -35,10 +35,13 @@ class Database():
         ]
 
     @sync_to_async
-    def get_payment_details(self) -> str:
+    def get_payment_details(self, language: str) -> str:
         """Get payment details from database."""
         bot = BotData.objects.all()
-        return bot[0].payment_details
+        if language == 'russian':
+            return bot[0].russian_payment_details
+
+        return bot[0].english_payment_details
 
     @sync_to_async
     def get_policy_url(self, language: str) -> str:
