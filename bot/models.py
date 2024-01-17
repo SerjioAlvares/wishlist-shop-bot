@@ -15,6 +15,7 @@ class BotData(models.Model):
         'Url Политики конфиденциальности на английском',
         blank=True
     )
+    payment_details = models.TextField('Реквизиты для оплаты сертификата')
 
     class Meta:
         verbose_name = 'бот'

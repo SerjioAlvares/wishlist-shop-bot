@@ -19,7 +19,8 @@ from telegram.ext import (
 
 (START, SELECTING_LANGUAGE, MAIN_MENU, SELECTING_IMPRESSION,
  SELECTING_RECEIVING_METHOD, WAITING_EMAIL, ACQUAINTED_PRIVACY_POLICY,
- WAITING_FULLNAME, WAITING_PHONE_NUMBER) = range(1, 10)
+ WAITING_FULLNAME, WAITING_PHONE_NUMBER,
+ WAITING_PAYMENT_SCREENSHOT) = range(1, 11)
 
 
 async def handle_users_reply(
@@ -46,6 +47,7 @@ async def handle_users_reply(
         ACQUAINTED_PRIVACY_POLICY: handle_privacy_policy_button,
         WAITING_FULLNAME: handle_fullname_message,
         WAITING_PHONE_NUMBER: handle_phone_number_message,
+        WAITING_PAYMENT_SCREENSHOT: handle_payment_screenshot,
     }
     chat_state = (
         START
@@ -92,7 +94,7 @@ async def handle_language_menu(
 async def send_main_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    text: str = ''
+    text: str=''
 ) -> int:
     """Send Main menu to chat."""
     if context.chat_data['language'] == 'russian':
@@ -182,7 +184,7 @@ def calculate_buttons_in_row(buttons_count: int) -> int:
 async def send_impressions_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    text: str = ''
+    text: str=''
 ) -> int:
     """Send Impressions menu."""
     impressions = await Database.get_impressions(context.chat_data['language'])
@@ -284,7 +286,7 @@ async def handle_unrecognized_impression(
 async def send_receiving_methods_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    text: str = ''
+    text: str=''
 ) -> int:
     """Send to chat Menu of ways to receive order."""
     if context.chat_data['language'] == 'russian':
@@ -557,6 +559,28 @@ async def send_payment_details(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Send Payment details and wait for payment screenshot."""
+    payment_details = Database.get_payment_details()
+    if context.chat_data['language'] == 'russian':
+        text = (
+            'Оплатить покупку можно по указанным реквизитам:\n*' +
+            payment_details +
+            '\n*После оплаты отправь здесь скриншот с подтверждением оплаты:'
+        )
+    else:
+        text = (
+            'You can pay for the purchase by the specified details:\n*' +
+            payment_details +
+            '\n*After payment, post a screenshot here with proof of payment'
+        )
+        await update.message.reply_text(text=text, parse_mode='MarkdownV2')
+        return WAITING_PAYMENT_SCREENSHOT
+
+
+async def handle_payment_screenshot(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Process receipt of screenshot of payment."""
     pass
 
 
