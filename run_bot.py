@@ -20,7 +20,8 @@ from telegram.ext import (
 (START, SELECTING_LANGUAGE, MAIN_MENU, SELECTING_IMPRESSION,
  SELECTING_RECEIVING_METHOD, WAITING_EMAIL, ACQUAINTED_PRIVACY_POLICY,
  WAITING_FULLNAME, WAITING_PHONE_NUMBER,
- WAITING_PAYMENT_SCREENSHOT, DIALOGUE_END) = range(1, 12)
+ WAITING_PAYMENT_SCREENSHOT, DIALOGUE_END,
+ SELECTING_DELIVERY_METHOD) = range(1, 13)
 
 
 async def handle_users_reply(
@@ -47,7 +48,8 @@ async def handle_users_reply(
         WAITING_FULLNAME: handle_fullname_message,
         WAITING_PHONE_NUMBER: handle_phone_number_message,
         WAITING_PAYMENT_SCREENSHOT: handle_payment_screenshot,
-        DIALOGUE_END: handle_dialogue_end
+        DIALOGUE_END: handle_dialogue_end,
+        SELECTING_DELIVERY_METHOD: handle_delivery_method_menu,
     }
     chat_state = (
         START
@@ -122,13 +124,6 @@ async def send_main_menu(
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    if update.callback_query:
-        await update.callback_query.edit_message_text(
-            text=text,
-            reply_markup=reply_markup
-        )
-        return MAIN_MENU
-
     if update.callback_query:
         await update.callback_query.edit_message_text(
             text=text,
@@ -629,7 +624,7 @@ async def handle_payment_screenshot(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Process receipt of screenshot of payment."""
+    """Handle receipt of screenshot of payment."""
     if not update.message.photo:
         if context.chat_data['language'] == 'russian':
             text = 'Ты прислал не скриншот оплаты.\n\n'
@@ -675,9 +670,93 @@ async def handle_dialogue_end(
 
 async def send_delivery_methods_menu(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str = ''
 ) -> int:
     """Send Delivery methods menu."""
+    if context.chat_data['language'] == 'russian':
+        text = (
+            f'{text}Спасибо!\n'
+            'Подскажи, как тебе удобнее получить сертификат\n\n'
+            'Точка самовывоза находится на Буките\n\n'
+            'Стоимость доставки зависит от района'
+        )
+        buttons = ['Доставка курьером', 'Самовывоз']
+    else:
+        text = (
+            f'{text}Thank you!\n'
+            'Tell me how you can get the certificate\n\n'
+            'The pick-up point is on Bookit.\n\n'
+            'Delivery cost depends on the neighbourhood'
+        )
+        buttons = ['Courier delivery', 'Self-delivery']
+
+    keyboard = [
+        [
+            InlineKeyboardButton(buttons[0], callback_data='courier'),
+            InlineKeyboardButton(buttons[1], callback_data='self'),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=reply_markup
+        )
+        return SELECTING_DELIVERY_METHOD
+
+    await update.message.reply_text(text=text, reply_markup=reply_markup)
+    return SELECTING_DELIVERY_METHOD
+
+
+async def handle_delivery_method_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle Delivery method menu."""
+    if not update.callback_query:
+        if context.chat_data['language'] == 'russian':
+            text = (
+                'Извини, непонятно, что ты хочешь выбрать. '
+                'Попробуй ещё раз.\n\n'
+            )
+        else:
+            text = (
+                "Sorry, it's not clear what you want to choose. "
+                "Try again.\n\n"
+            )
+        next_state = await send_delivery_methods_menu(update, context, text)
+        return next_state
+
+    await update.callback_query.answer()
+
+    if update.callback_query.data == 'courier':
+        next_state = await handle_courier_delivery_button(update, context)
+        return next_state
+
+    if update.callback_query.data == 'self':
+        next_state = await handle_self_delivery_button(update, context)
+        return next_state
+
+
+async def handle_courier_delivery_button(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle Courier delivery button click."""
+    if context.chat_data['language'] == 'russian':
+        text = 'Введи имя получателя (кириллицей):'
+    else:
+        text = 'Please write the recipient name:'
+    await update.callback_query.edit_message_text(text=text)
+    return WAITING_FULLNAME
+
+
+async def handle_self_delivery_button(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle Self-delivery button click."""
     pass
 
 
