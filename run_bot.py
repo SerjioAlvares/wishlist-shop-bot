@@ -18,10 +18,11 @@ from telegram.ext import (
 
 
 (START, SELECTING_LANGUAGE, MAIN_MENU, SELECTING_IMPRESSION,
- SELECTING_RECEIVING_METHOD, WAITING_EMAIL, ACQUAINTED_PRIVACY_POLICY,
- WAITING_FULLNAME, WAITING_PHONE_NUMBER,
+ SELECTING_RECEIVING_METHOD, WAITING_CUSTOMER_EMAIL, ACQUAINTED_PRIVACY_POLICY,
+ WAITING_CUSTOMER_FULLNAME, WAITING_CUSTOMER_PHONE,
  WAITING_PAYMENT_SCREENSHOT, DIALOGUE_END,
- SELECTING_DELIVERY_METHOD) = range(1, 13)
+ SELECTING_DELIVERY_METHOD, WAITING_RECIPIENT_FULLNAME,
+ WAITING_RECIPIENT_CONTACT) = range(1, 15)
 
 
 async def handle_users_reply(
@@ -43,13 +44,15 @@ async def handle_users_reply(
         MAIN_MENU: handle_main_menu,
         SELECTING_IMPRESSION: handle_impressions_menu,
         SELECTING_RECEIVING_METHOD: handle_receiving_methods_menu,
-        WAITING_EMAIL: handle_email_message,
+        WAITING_CUSTOMER_EMAIL: handle_customer_email_message,
         ACQUAINTED_PRIVACY_POLICY: handle_privacy_policy_button,
-        WAITING_FULLNAME: handle_fullname_message,
-        WAITING_PHONE_NUMBER: handle_phone_number_message,
+        WAITING_CUSTOMER_FULLNAME: handle_customer_fullname_message,
+        WAITING_CUSTOMER_PHONE: handle_customer_phone_message,
         WAITING_PAYMENT_SCREENSHOT: handle_payment_screenshot,
         DIALOGUE_END: handle_dialogue_end,
         SELECTING_DELIVERY_METHOD: handle_delivery_methods_menu,
+        WAITING_RECIPIENT_FULLNAME: handle_recipient_fullname_message,
+        WAITING_RECIPIENT_CONTACT: handle_recipient_contact_message,
     }
     chat_state = (
         START
@@ -421,14 +424,14 @@ async def handle_email_button(
             'the certificate:'
         )
     await update.callback_query.edit_message_text(text=text)
-    return WAITING_EMAIL
+    return WAITING_CUSTOMER_EMAIL
 
 
-async def handle_email_message(
+async def handle_customer_email_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Handle the WAITING_EMAIL state."""
+    """Handle the WAITING_CUSTOMER_EMAIL state."""
     pattern = r'(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)'
     match = re.match(pattern, update.message.text.strip())
     if not match:
@@ -441,7 +444,7 @@ async def handle_email_message(
             text = 'Email spelling error.\nPlease send us your email:'
 
         await update.message.reply_text(text=text)
-        return WAITING_EMAIL
+        return WAITING_CUSTOMER_EMAIL
 
     context.chat_data['email'] = match.groups()[0]
     next_state = await send_privacy_policy(update, context)
@@ -481,6 +484,15 @@ async def send_privacy_policy(
 
     keyboard = [[InlineKeyboardButton(button, callback_data='privacy_policy')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text=text,
+            parse_mode='MarkdownV2',
+            reply_markup=reply_markup
+        )
+        return ACQUAINTED_PRIVACY_POLICY
+
     await update.message.reply_text(
         text=text,
         parse_mode='MarkdownV2',
@@ -503,58 +515,62 @@ async def handle_privacy_policy_button(
     else:
         text = 'Please write your first and last name:'
     await update.callback_query.edit_message_text(text=text)
-    return WAITING_FULLNAME
+    return WAITING_CUSTOMER_FULLNAME
 
 
-async def handle_fullname_message(
+async def handle_customer_fullname_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Handle the WAITING_FULLNAME state."""
-    fullname = update.message.text.strip()
-    if len(fullname) < 4 or ' ' not in fullname:
-        if context.chat_data['language'] == 'russian':
-            text = (
-                'Ошибка в написании фамилии и имени.\n'
-                'Пожалуйста, пришли нам фамилию и имя (кириллицей):'
-            )
-        else:
-            text = (
-                'First and last name spelling error.\n'
-                'Please send us the first and last name:'
-            )
+    """Handle the WAITING_CUSTOMER_FULLNAME state."""
+    customer_fullname = update.message.text.strip()
+    if len(customer_fullname) < 4 or ' ' not in customer_fullname:
+        await send_fullname_error_message(update, context)
+        return WAITING_CUSTOMER_FULLNAME
 
-        await update.message.reply_text(text=text)
-        return WAITING_FULLNAME
-
-    context.chat_data['fullname'] = fullname
-    if context.chat_data['receiving-method'] == 'email':
-        next_state = await send_phone_number_request(update, context)
-        return next_state
-
-    next_state = await send_recipient_contact_request(update, context)
+    context.chat_data['customer-fullname'] = customer_fullname
+    next_state = await send_phone_number_request(update, context)
     return next_state
+
+
+async def send_fullname_error_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Send to chat Message about an error in the fullname."""
+    if context.chat_data['language'] == 'russian':
+        text = (
+            'Ошибка в написании фамилии и имени.\n'
+            'Пожалуйста, пришли нам фамилию и имя (кириллицей):'
+        )
+    else:
+        text = (
+            'First and last name spelling error.\n'
+            'Please send us the first and last name:'
+        )
+
+    await update.message.reply_text(text=text)
 
 
 async def send_phone_number_request(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Send to the chat Request to enter the customer's phone number."""
+    """Send to the chat Request to enter the customer phone number."""
     if context.chat_data['language'] == 'russian':
         text = 'Оставь, пожалуйста, свой контактный номер телефона:'
     else:
         text = 'Please write your contact phone number:'
 
     await update.message.reply_text(text=text)
-    return WAITING_PHONE_NUMBER
+    return WAITING_CUSTOMER_PHONE
 
 
-async def handle_phone_number_message(
+async def handle_customer_phone_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Handle the WAITING_PHONE_NUMBER state."""
+    """Handle the WAITING_CUSTOMER_PHONE state."""
     value = update.message.text.strip()
     error = not bool(value)
     if not error:
@@ -582,7 +598,7 @@ async def handle_phone_number_message(
             )
 
         await update.message.reply_text(text=text)
-        return WAITING_PHONE_NUMBER
+        return WAITING_CUSTOMER_PHONE
 
     context.chat_data['phone_number'] = (
         f'+{value.country_code}{value.national_number}'
@@ -690,7 +706,7 @@ async def send_delivery_methods_menu(
         text = (
             f'{text}Thank you!\n'
             'Tell me how you can get the certificate\n\n'
-            'The pick-up point is on Bookit.\n\n'
+            'The pick-up point is on Bukit.\n\n'
             'Delivery cost depends on the neighbourhood'
         )
         buttons = ['Courier delivery', 'Self-delivery']
@@ -753,7 +769,22 @@ async def handle_courier_delivery_button(
     else:
         text = 'Please write the recipient name:'
     await update.callback_query.edit_message_text(text=text)
-    return WAITING_FULLNAME
+    return WAITING_RECIPIENT_FULLNAME
+
+
+async def handle_recipient_fullname_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle the WAITING_RECIPIENT_FULLNAME state."""
+    recipient_fullname = update.message.text.strip()
+    if len(recipient_fullname) < 4 or ' ' not in recipient_fullname:
+        await send_fullname_error_message(update, context)
+        return WAITING_RECIPIENT_FULLNAME
+
+    context.chat_data['recipient-fullname'] = recipient_fullname
+    next_state = await send_recipient_contact_request(update, context)
+    return next_state
 
 
 async def send_recipient_contact_request(
@@ -761,7 +792,63 @@ async def send_recipient_contact_request(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Send to chat Request recipient's contact."""
-    pass
+    if context.chat_data['language'] == 'russian':
+        text = (
+            'Как нам связаться с получателем?\n\n'
+            'Напиши номер в WhatsApp или ник в Telegram:'
+        )
+    else:
+        text = (
+            'How do we contact the recipient?\n\n'
+            'Write the number in WhatsApp or nickname in Telegram:'
+        )
+    await update.message.reply_text(text=text)
+    return WAITING_RECIPIENT_CONTACT
+
+
+async def handle_recipient_contact_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle the WAITING_RECIPIENT_CONTACT state."""
+    recipient_contact = update.message.text.strip()
+    if len(recipient_contact) < 3:
+        if context.chat_data['language'] == 'russian':
+            text = (
+                    'Ошибка в присланных контактах.\nПожалуйста, '
+                    'пришли нам номер в WhatsApp или ник в Telegram:'
+                )
+        else:
+            text = (
+                'Error in spelling of contacts.\nPlease '
+                'send us the number in WhatsApp or nickname in Telegram:'
+            )
+        await update.message.reply_text(text=text)
+        return WAITING_RECIPIENT_CONTACT
+
+    context.chat_data['recipient-contact'] = recipient_contact
+    next_state = await send_successful_booking_message(update, context)
+    return next_state
+
+
+async def send_successful_booking_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Send to chat Message about successful booking."""
+    if context.chat_data['language'] == 'russian':
+        text = (
+            'Мы забронировали сертификат ✨\n\n'
+            'В ближайшее время тебе напишет оператор'
+        )
+    else:
+        text = (
+            "We've booked the certificate ✨\n\n"
+            "An operator will write to you shortly"
+        )
+
+    await update.message.reply_text(text=text)
+    return DIALOGUE_END
 
 
 async def handle_self_delivery_button(
@@ -769,7 +856,9 @@ async def handle_self_delivery_button(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle Self-delivery button click."""
-    pass
+    text = "Извини, эта кнопка пока не работает.\n\n"
+    next_state = await send_main_menu(update, context, text)
+    return next_state
 
 
 async def handle_certificate_button(
