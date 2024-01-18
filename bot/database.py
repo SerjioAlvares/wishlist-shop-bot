@@ -45,9 +45,24 @@ class Database():
 
     @sync_to_async
     def get_policy_url(self, language: str) -> str:
-        """Get policy url from database."""
+        """Get Privacy policy url from database."""
         bot = BotData.objects.all()
         if language == 'russian':
             return bot[0].russian_policy_url
 
         return bot[0].english_policy_url
+
+    @sync_to_async
+    def get_self_delivery_point(self, language: str) -> Dict:
+        """Get details of self-delivery point from database."""
+        bot = BotData.objects.all()
+        if language == 'russian':
+            return {
+                'address': bot[0].russian_self_delivery_address,
+                'opening-hours': bot[0].russian_self_delivery_hours
+            }
+
+        return {
+            'address': bot[0].english_self_delivery_address,
+            'opening-hours': bot[0].english_self_delivery_hours
+        }

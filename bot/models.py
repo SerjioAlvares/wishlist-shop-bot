@@ -23,6 +23,26 @@ class BotData(models.Model):
         'Реквизиты для оплаты сертификата (на английском)',
         blank=True
     )
+    russian_self_delivery_address = models.CharField(
+        'Адрес пункта самовывоза по-русски',
+        max_length=256,
+        blank=True
+    )
+    russian_self_delivery_hours = models.CharField(
+        'Время работы самовывоза по-русски',
+        max_length=256,
+        blank=True
+    )
+    english_self_delivery_address = models.CharField(
+        'Адрес пункта самовывоза по-английски',
+        max_length=256,
+        blank=True
+    )
+    english_self_delivery_hours = models.CharField(
+        'Время работы самовывоза по-английски',
+        max_length=256,
+        blank=True
+    )
 
     class Meta:
         verbose_name = 'бот'

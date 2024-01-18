@@ -22,7 +22,7 @@ from telegram.ext import (
  WAITING_CUSTOMER_FULLNAME, WAITING_CUSTOMER_PHONE,
  WAITING_PAYMENT_SCREENSHOT, DIALOGUE_END,
  SELECTING_DELIVERY_METHOD, WAITING_RECIPIENT_FULLNAME,
- WAITING_RECIPIENT_CONTACT) = range(1, 15)
+ WAITING_RECIPIENT_CONTACT, CONFIRMING_SELF_DELIVERY) = range(1, 16)
 
 
 async def handle_users_reply(
@@ -53,6 +53,7 @@ async def handle_users_reply(
         SELECTING_DELIVERY_METHOD: handle_delivery_methods_menu,
         WAITING_RECIPIENT_FULLNAME: handle_recipient_fullname_message,
         WAITING_RECIPIENT_CONTACT: handle_recipient_contact_message,
+        CONFIRMING_SELF_DELIVERY: handle_self_delivery_menu,
     }
     chat_state = (
         START
@@ -172,22 +173,6 @@ async def handle_main_menu(
         return next_state
 
 
-def calculate_buttons_in_row(buttons_count: int) -> int:
-    """Count how many buttons to place in a row."""
-    buttons_in_row = 5
-    if buttons_count <= buttons_in_row:
-        return buttons_count
-
-    if not buttons_count % buttons_in_row:
-        if buttons_count % buttons_in_row > 1:
-            return buttons_in_row
-
-        for buttons_in_row in range(7, 3, -1):
-            if buttons_count % buttons_in_row > 1:
-                return buttons_in_row
-    return 5
-
-
 async def send_impressions_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -257,6 +242,22 @@ def normalise_text(text: str) -> str:
         new_text += character
         old_character = character
     return new_text
+
+
+def calculate_buttons_in_row(buttons_count: int) -> int:
+    """Count how many buttons to place in a row."""
+    buttons_in_row = 5
+    if buttons_count <= buttons_in_row:
+        return buttons_count
+
+    if not buttons_count % buttons_in_row:
+        if buttons_count % buttons_in_row > 1:
+            return buttons_in_row
+
+        for buttons_in_row in range(7, 3, -1):
+            if buttons_count % buttons_in_row > 1:
+                return buttons_in_row
+    return 5
 
 
 async def handle_impressions_menu(
@@ -698,7 +699,7 @@ async def send_delivery_methods_menu(
         text = (
             f'{text}Спасибо!\n'
             'Подскажи, как тебе удобнее получить сертификат\n\n'
-            'Точка самовывоза находится на Буките\n\n'
+            'Пункт самовывоза находится на Буките\n\n'
             'Стоимость доставки зависит от района'
         )
         buttons = ['Доставка курьером', 'Самовывоз']
@@ -706,7 +707,7 @@ async def send_delivery_methods_menu(
         text = (
             f'{text}Thank you!\n'
             'Tell me how you can get the certificate\n\n'
-            'The pick-up point is on Bukit.\n\n'
+            'The self-delivery point is on Bukit.\n\n'
             'Delivery cost depends on the neighbourhood'
         )
         buttons = ['Courier delivery', 'Self-delivery']
@@ -737,13 +738,13 @@ async def handle_delivery_methods_menu(
     if not update.callback_query:
         if context.chat_data['language'] == 'russian':
             text = (
-                'Извини, непонятно, что ты хочешь выбрать. '
+                'Извини, непонятно, какой способ доставки ты хочешь выбрать. '
                 'Попробуй ещё раз.\n\n'
             )
         else:
             text = (
-                "Sorry, it's not clear what you want to choose. "
-                "Try again.\n\n"
+                "Sorry, it's not clear which delivery method you want "
+                "to choose. Try again.\n\n"
             )
         next_state = await send_delivery_methods_menu(update, context, text)
         return next_state
@@ -755,7 +756,7 @@ async def handle_delivery_methods_menu(
         return next_state
 
     if update.callback_query.data == 'self-delivery':
-        next_state = await handle_self_delivery_button(update, context)
+        next_state = await send_self_delivery_menu(update, context)
         return next_state
 
 
@@ -815,8 +816,8 @@ async def handle_recipient_contact_message(
     if len(recipient_contact) < 3:
         if context.chat_data['language'] == 'russian':
             text = (
-                    'Ошибка в присланных контактах.\nПожалуйста, '
-                    'пришли нам номер в WhatsApp или ник в Telegram:'
+                'Ошибка в присланных контактах.\nПожалуйста, '
+                'пришли нам номер в WhatsApp или ник в Telegram:'
                 )
         else:
             text = (
@@ -847,18 +848,87 @@ async def send_successful_booking_message(
             "An operator will write to you shortly"
         )
 
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text=text)
+        return DIALOGUE_END
+
     await update.message.reply_text(text=text)
     return DIALOGUE_END
 
 
-async def handle_self_delivery_button(
+async def send_self_delivery_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str = ''
+) -> int:
+    """Handle Self-delivery button click."""
+    self_delivery_point = await Database.get_self_delivery_point(
+        context.chat_data['language']
+    )
+    if context.chat_data['language'] == 'russian':
+        text = (
+            f'{text}Самовывоз доступен по адресу:\n' +
+            self_delivery_point['address'] +
+            '\n\nЧасы работы:\n' +
+            self_delivery_point['opening-hours']
+        )
+        buttons = ['Мне подходит', '‹ Назад к способам доставки']
+    else:
+        text = (
+            f'{text}Self-collection is available at the address:\n' +
+            self_delivery_point['address'] +
+            '\n\nOpening hours:\n' +
+            self_delivery_point['opening-hours']
+        )
+        buttons = ['It works for me', '‹ Back to delivery methods']
+
+    keyboard = [[
+        InlineKeyboardButton(buttons[0], callback_data='self-delivery-yes'),
+        InlineKeyboardButton(buttons[1], callback_data='self-delivery-no'),
+    ]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=reply_markup
+        )
+        return CONFIRMING_SELF_DELIVERY
+
+    await update.message.reply_text(
+        text=text,
+        reply_markup=reply_markup
+    )
+    return CONFIRMING_SELF_DELIVERY
+
+
+async def handle_self_delivery_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Handle Self-delivery button click."""
-    text = "Извини, эта кнопка пока не работает.\n\n"
-    next_state = await send_main_menu(update, context, text)
-    return next_state
+    """Handle Confirming self-delivery menu."""
+    if not update.callback_query:
+        if context.chat_data['language'] == 'russian':
+            text = (
+                'Извини, непонятно, что ты хочешь выбрать. '
+                'Попробуй ещё раз.\n\n'
+            )
+        else:
+            text = (
+                "Sorry, it's not clear what you want to choose. "
+                "Try again.\n\n"
+            )
+        next_state = await send_self_delivery_menu(update, context, text)
+        return next_state
+
+    await update.callback_query.answer()
+
+    if update.callback_query.data == 'self-delivery-yes':
+        next_state = await send_successful_booking_message(update, context)
+        return next_state
+
+    if update.callback_query.data == 'self-delivery-no':
+        next_state = await send_delivery_methods_menu(update, context)
+        return next_state
 
 
 async def handle_certificate_button(
