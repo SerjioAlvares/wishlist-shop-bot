@@ -49,7 +49,7 @@ async def handle_users_reply(
         WAITING_PHONE_NUMBER: handle_phone_number_message,
         WAITING_PAYMENT_SCREENSHOT: handle_payment_screenshot,
         DIALOGUE_END: handle_dialogue_end,
-        SELECTING_DELIVERY_METHOD: handle_delivery_method_menu,
+        SELECTING_DELIVERY_METHOD: handle_delivery_methods_menu,
     }
     chat_state = (
         START
@@ -342,7 +342,7 @@ async def send_receiving_methods_menu(
     keyboard = [
         [
             InlineKeyboardButton(buttons[0], callback_data='email'),
-            InlineKeyboardButton(buttons[1], callback_data='gift_box'),
+            InlineKeyboardButton(buttons[1], callback_data='gift-box'),
         ],
         [
             InlineKeyboardButton(buttons[2], callback_data='impression')
@@ -402,7 +402,7 @@ async def handle_receiving_methods_menu(
         next_state = await handle_email_button(update, context)
         return next_state
 
-    if update.callback_query.data == 'gift_box':
+    if update.callback_query.data == 'gift-box':
         next_state = await handle_gift_box_button(update, context)
         return next_state
 
@@ -412,7 +412,7 @@ async def handle_email_button(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle Email button click."""
-    context.chat_data['delivery'] = 'email'
+    context.chat_data['receiving-method'] = 'email'
     if context.chat_data['language'] == 'russian':
         text = 'Напиши почту, на которую хотел(а) бы получить сертификат:'
     else:
@@ -453,7 +453,7 @@ async def handle_gift_box_button(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle Gift-box button click."""
-    context.chat_data['delivery'] = 'gift_box'
+    context.chat_data['receiving-method'] = 'gift-box'
     next_state = await send_privacy_policy(update, context)
     return next_state
 
@@ -516,27 +516,31 @@ async def handle_fullname_message(
         if context.chat_data['language'] == 'russian':
             text = (
                 'Ошибка в написании фамилии и имени.\n'
-                'Пожалуйста, пришли нам свои фамилию и имя (кириллицей):'
+                'Пожалуйста, пришли нам фамилию и имя (кириллицей):'
             )
         else:
             text = (
                 'First and last name spelling error.\n'
-                'Please send us your first and last name:'
+                'Please send us the first and last name:'
             )
 
         await update.message.reply_text(text=text)
         return WAITING_FULLNAME
 
     context.chat_data['fullname'] = fullname
-    next_state = await send_phone_number_prompt(update, context)
+    if context.chat_data['receiving-method'] == 'email':
+        next_state = await send_phone_number_request(update, context)
+        return next_state
+
+    next_state = await send_recipient_contact_request(update, context)
     return next_state
 
 
-async def send_phone_number_prompt(
+async def send_phone_number_request(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Send prompt to enter phone number to chat."""
+    """Send to the chat Request to enter the customer's phone number."""
     if context.chat_data['language'] == 'russian':
         text = 'Оставь, пожалуйста, свой контактный номер телефона:'
     else:
@@ -583,7 +587,7 @@ async def handle_phone_number_message(
     context.chat_data['phone_number'] = (
         f'+{value.country_code}{value.national_number}'
     )
-    if context.chat_data['delivery'] == 'email':
+    if context.chat_data['receiving-method'] == 'email':
         next_state = await send_payment_details(update, context)
         return next_state
 
@@ -693,8 +697,8 @@ async def send_delivery_methods_menu(
 
     keyboard = [
         [
-            InlineKeyboardButton(buttons[0], callback_data='courier'),
-            InlineKeyboardButton(buttons[1], callback_data='self'),
+            InlineKeyboardButton(buttons[0], callback_data='courier-delivery'),
+            InlineKeyboardButton(buttons[1], callback_data='self-delivery'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -709,7 +713,7 @@ async def send_delivery_methods_menu(
     return SELECTING_DELIVERY_METHOD
 
 
-async def handle_delivery_method_menu(
+async def handle_delivery_methods_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
@@ -730,11 +734,11 @@ async def handle_delivery_method_menu(
 
     await update.callback_query.answer()
 
-    if update.callback_query.data == 'courier':
+    if update.callback_query.data == 'courier-delivery':
         next_state = await handle_courier_delivery_button(update, context)
         return next_state
 
-    if update.callback_query.data == 'self':
+    if update.callback_query.data == 'self-delivery':
         next_state = await handle_self_delivery_button(update, context)
         return next_state
 
@@ -750,6 +754,14 @@ async def handle_courier_delivery_button(
         text = 'Please write the recipient name:'
     await update.callback_query.edit_message_text(text=text)
     return WAITING_FULLNAME
+
+
+async def send_recipient_contact_request(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Send to chat Request recipient's contact."""
+    pass
 
 
 async def handle_self_delivery_button(
