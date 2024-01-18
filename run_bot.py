@@ -23,7 +23,8 @@ from telegram.ext import (
  WAITING_PAYMENT_SCREENSHOT, DIALOGUE_END,
  SELECTING_DELIVERY_METHOD, WAITING_RECIPIENT_FULLNAME,
  WAITING_RECIPIENT_CONTACT, CONFIRMING_SELF_DELIVERY,
- WAITING_CERTIFICATE_ID, WRONG_CERTIFICATE_MENU) = range(1, 18)
+ WAITING_CERTIFICATE_ID, WRONG_CERTIFICATE_MENU,
+ SELECTING_QUESTION, ANSWER_MENU) = range(1, 20)
 
 
 async def handle_users_reply(
@@ -57,6 +58,8 @@ async def handle_users_reply(
         CONFIRMING_SELF_DELIVERY: handle_self_delivery_menu,
         WAITING_CERTIFICATE_ID: handle_certificate_id_message,
         WRONG_CERTIFICATE_MENU: handle_wrong_certificate_menu,
+        SELECTING_QUESTION: handle_questions_menu,
+        ANSWER_MENU: handle_answer_menu
     }
     chat_state = (
         START
@@ -115,9 +118,9 @@ async def send_main_menu(
     else:
         message = 'Please choose what you want to do'
         buttons = [
-            'Select an impression',
-            'Activate certificate',
-            'F.A.Q. and support'
+            'Select Impression',
+            'Activate Certificate',
+            'F.A.Q. and Support'
         ]
 
     text = f'{text}{message}'
@@ -163,7 +166,7 @@ async def handle_main_menu(
         return next_state
 
     if update.callback_query.data == 'faq':
-        next_state = await handle_faq_button(update, context)
+        next_state = await send_questions_menu(update, context)
         return next_state
 
 
@@ -220,7 +223,7 @@ async def send_impressions_menu(
             callback_data=impression_title)
         )
 
-    keyboard.append([InlineKeyboardButton(button, callback_data='main_menu')])
+    keyboard.append([InlineKeyboardButton(button, callback_data='main-menu')])
 
     text += '\n'
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -280,7 +283,7 @@ async def handle_impressions_menu(
 
     await update.callback_query.answer()
 
-    if update.callback_query.data == 'main_menu':
+    if update.callback_query.data == 'main-menu':
         next_state = await send_main_menu(update, context)
         return next_state
 
@@ -311,7 +314,7 @@ async def handle_unrecognized_impression(
         )
     else:
         text = (
-            "Sorry, it's not clear which experience you want to "
+            "Sorry, it's not clear which impression you want to "
             "choose. Try again.\n\n"
         )
 
@@ -361,7 +364,7 @@ async def send_receiving_methods_menu(
             InlineKeyboardButton(buttons[2], callback_data='impression')
         ],
         [
-            InlineKeyboardButton(buttons[3], callback_data='main_menu')
+            InlineKeyboardButton(buttons[3], callback_data='main-menu')
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -403,7 +406,7 @@ async def handle_receiving_methods_menu(
 
     await update.callback_query.answer()
 
-    if update.callback_query.data == 'main_menu':
+    if update.callback_query.data == 'main-menu':
         next_state = await send_main_menu(update, context)
         return next_state
 
@@ -1003,9 +1006,9 @@ async def send_wrong_certificate_menu(
         text = (
             f'{text_beginning}Please check if you have entered the ID '
             'correctly and if the certificate expiry date is valid\n\n'
-            'If you need help, click the "Call a person" button'
+            'If you need help, click the "Call Person" button'
         )
-        buttons = ['Enter ID again', 'Call a person']
+        buttons = ['Enter ID again', 'Call Person']
 
     keyboard = [[
         InlineKeyboardButton(buttons[0], callback_data='certificate-id'),
@@ -1062,14 +1065,144 @@ async def send_calling_person_message(
     return DIALOGUE_END
 
 
-async def handle_faq_button(
+async def send_questions_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str = ''
+) -> int:
+    """Handle the FAQ button click."""
+    if context.chat_data['language'] == 'russian':
+        text = (
+            f'{text}Выбери вопрос и нажми на кнопку с соответствующим номером:\n\n'
+            '1. Вопрос 1 из базы данных\n2. Вопрос 2 из базы данных\n'
+            '3. Вопрос 3 из базы данных\n4. Вопрос 4 из базы данных\n'
+            '5. Вопрос 5 из базы данных\n'
+        )
+        buttons = ['Позвать человека', '« Вернуться в главное меню']
+    else:
+        text = (
+            f'{text}Click on the button with the question number:\n\n'
+            '1. Question 1 from the database\n'
+            '2. Question 2 from the database\n'
+            '3. Question 3 from the database\n'
+            '4. Question 4 from the database\n'
+            '5. Question 5 from the database\n'
+        )
+        buttons = ['Call Person', '« Back to main menu']
+
+    keyboard = [
+        [
+            InlineKeyboardButton('1', callback_data='question-1'),
+            InlineKeyboardButton('2', callback_data='question-2'),
+            InlineKeyboardButton('3', callback_data='question-3'),
+            InlineKeyboardButton('4', callback_data='question-4'),
+            InlineKeyboardButton('5', callback_data='question-5')
+        ],
+        [InlineKeyboardButton(buttons[0], callback_data='call-person')],
+        [InlineKeyboardButton(buttons[1], callback_data='main-menu')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=reply_markup
+        )
+        return SELECTING_QUESTION
+
+    await update.message.reply_text(
+        text=text,
+        reply_markup=reply_markup
+    )
+    return SELECTING_QUESTION
+
+
+async def handle_questions_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Handle the FAQ button click."""
-    text = "Извини, эта кнопка пока не работает.\n\n"
-    next_state = await send_main_menu(update, context, text)
+    """Handle Question selecting."""
+    if not update.callback_query:
+        if context.chat_data['language'] == 'russian':
+            text = (
+                'Извини, непонятно, какой вопрос ты хочешь '
+                'выбрать. Попробуй ещё раз.\n\n'
+            )
+        else:
+            text = (
+                "Sorry, it's not clear which question you want to "
+                "choose. Try again.\n\n"
+            )
+
+        next_state = await send_questions_menu(update, context, text)
+        return next_state
+
+    await update.callback_query.answer()
+
+    if update.callback_query.data == 'main-menu':
+        next_state = await send_main_menu(update, context)
+        return next_state
+
+    if update.callback_query.data == 'call-person':
+        next_state = await send_calling_person_message(update, context)
+        return next_state
+
+    next_state = await send_answer_menu(update, context)
     return next_state
+
+
+async def send_answer_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Send a chat message when calling a person."""
+    if context.chat_data['language'] == 'russian':
+        text = 'Это ответ на вопрос из базы данных'
+        buttons = [
+            '‹ Вернуться к списку вопросов',
+            '« Вернуться в главное меню'
+        ]
+    else:
+        text = 'This is the answer to a question from the database'
+        buttons = ['‹ Back to list of questions', '« Back to main menu']
+
+    keyboard = [
+        [InlineKeyboardButton(buttons[0], callback_data='questions-list')],
+        [InlineKeyboardButton(buttons[1], callback_data='main-menu')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=reply_markup
+        )
+        return ANSWER_MENU
+
+    await update.message.reply_text(
+        text=text,
+        reply_markup=reply_markup
+    )
+    return ANSWER_MENU
+
+
+async def handle_answer_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle Answer menu."""
+    if not update.callback_query:
+        text = get_misunderstanding_message(context.chat_data['language'])
+        next_state = await send_answer_menu(update, context, text)
+        return next_state
+
+    await update.callback_query.answer()
+
+    if update.callback_query.data == 'main-menu':
+        next_state = await send_main_menu(update, context)
+        return next_state
+
+    if update.callback_query.data == 'questions-list':
+        next_state = await send_questions_menu(update, context)
+        return next_state
 
 
 def main() -> None:
