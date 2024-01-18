@@ -22,7 +22,8 @@ from telegram.ext import (
  WAITING_CUSTOMER_FULLNAME, WAITING_CUSTOMER_PHONE,
  WAITING_PAYMENT_SCREENSHOT, DIALOGUE_END,
  SELECTING_DELIVERY_METHOD, WAITING_RECIPIENT_FULLNAME,
- WAITING_RECIPIENT_CONTACT, CONFIRMING_SELF_DELIVERY) = range(1, 16)
+ WAITING_RECIPIENT_CONTACT, CONFIRMING_SELF_DELIVERY,
+ WAITING_CERTIFICATE_ID, WRONG_CERTIFICATE_MENU) = range(1, 18)
 
 
 async def handle_users_reply(
@@ -54,6 +55,8 @@ async def handle_users_reply(
         WAITING_RECIPIENT_FULLNAME: handle_recipient_fullname_message,
         WAITING_RECIPIENT_CONTACT: handle_recipient_contact_message,
         CONFIRMING_SELF_DELIVERY: handle_self_delivery_menu,
+        WAITING_CERTIFICATE_ID: handle_certificate_id_message,
+        WRONG_CERTIFICATE_MENU: handle_wrong_certificate_menu,
     }
     chat_state = (
         START
@@ -145,16 +148,7 @@ async def handle_main_menu(
 ) -> int:
     """Handle Main menu."""
     if not update.callback_query:
-        if context.chat_data['language'] == 'russian':
-            text = (
-                'Извини, непонятно, что ты хочешь выбрать. '
-                'Попробуй ещё раз.\n\n'
-            )
-        else:
-            text = (
-                "Sorry, it's not clear what you want to choose. "
-                "Try again.\n\n"
-            )
+        text = get_misunderstanding_message(context.chat_data['language'])
         next_state = await send_main_menu(update, context, text)
         return next_state
 
@@ -171,6 +165,21 @@ async def handle_main_menu(
     if update.callback_query.data == 'faq':
         next_state = await handle_faq_button(update, context)
         return next_state
+
+
+def get_misunderstanding_message(language: str) -> str:
+    """Returns a message that the user action is not clear"""
+    if language == 'russian':
+        text = (
+            'Извини, непонятно, что ты хочешь выбрать. '
+            'Попробуй ещё раз.\n\n'
+        )
+    else:
+        text = (
+            "Sorry, it's not clear what you want to choose. "
+            "Try again.\n\n"
+        )
+    return text
 
 
 async def send_impressions_menu(
@@ -551,6 +560,7 @@ async def send_fullname_error_message(
         )
 
     await update.message.reply_text(text=text)
+    return WAITING_CUSTOMER_FULLNAME
 
 
 async def send_phone_number_request(
@@ -623,19 +633,17 @@ async def send_payment_details(
     )
     payment_details = normalise_text(payment_details)
     if context.chat_data['language'] == 'russian':
-        text = (
-            text +
-            'Оплатить покупку можно по указанным реквизитам:\n\n*' +
+        text = normalise_text(
+            f'{text}Оплатить покупку можно по указанным реквизитам:\n\n*' +
             payment_details +
             '\n\n*После оплаты отправь нам скриншот с подтверждением оплаты:'
         )
     else:
-        text = (
-            text +
-            'You can pay for the purchase by the specified details:\n\n*' +
+        text = normalise_text(
+            f"{text}You can pay for the purchase by the specified details:\n\n*" +
             payment_details +
-            '\n\n*After payment, send us a screenshot with payment:'
-            'confirmation'
+            "\n\n*After payment, send us a screenshot with payment:"
+            "confirmation"
         )
     await update.message.reply_text(text=text, parse_mode='MarkdownV2')
     return WAITING_PAYMENT_SCREENSHOT
@@ -652,7 +660,7 @@ async def handle_payment_screenshot(
         else:
             text = (
                 "You didn't send a screenshot "
-                "of the payment.n\n"
+                "of the payment\n\n"
             )
         await send_payment_details(update, context, text)
 
@@ -907,16 +915,7 @@ async def handle_self_delivery_menu(
 ) -> int:
     """Handle Confirming self-delivery menu."""
     if not update.callback_query:
-        if context.chat_data['language'] == 'russian':
-            text = (
-                'Извини, непонятно, что ты хочешь выбрать. '
-                'Попробуй ещё раз.\n\n'
-            )
-        else:
-            text = (
-                "Sorry, it's not clear what you want to choose. "
-                "Try again.\n\n"
-            )
+        text = get_misunderstanding_message(context.chat_data['language'])
         next_state = await send_self_delivery_menu(update, context, text)
         return next_state
 
@@ -935,10 +934,132 @@ async def handle_certificate_button(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
-    """Handle Certificate button click."""
-    text = "Извини, эта кнопка пока не работает.\n\n"
-    next_state = await send_main_menu(update, context, text)
+    """Handle Activate certificate button click."""
+    if context.chat_data['language'] == 'russian':
+        text = (
+            'Поздравляем - близкий человек подарил тебе прекрасные '
+            'впечатления!\nОкунёмся в мир невероятных эмоций?\n\n'
+        )
+    else:
+        text = (
+            "Congratulations - a loved one has given you a wonderful "
+            "experience!\nLet's dive into the world of incredible "
+            "emotions?\n\n"
+        )
+    next_state = await send_certificate_id_request(update, context, text)
     return next_state
+
+
+async def send_certificate_id_request(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str = ''
+) -> int:
+    """Send certificate ID input request to chat."""
+    if context.chat_data['language'] == 'russian':
+        text = f'{text}Введи ID сертификата, чтобы активировать его:'
+    else:
+        text = f"{text}Write your certificate ID to activate it:"
+    await update.callback_query.edit_message_text(text=text)
+    return WAITING_CERTIFICATE_ID
+
+
+async def handle_certificate_id_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle the WAITING_CERTIFICATE_ID state."""
+    certificate_id = update.message.text.strip()
+    good_certificate_id = await check_certificate_id(certificate_id)
+    if not good_certificate_id:
+        next_state = await send_wrong_certificate_menu(update, context)
+        return next_state
+
+    # TODO Write code for good certificate id
+
+
+async def check_certificate_id(certificate_id: int) -> bool:
+    """Check certificate ID."""
+    # TODO Write real checking
+    return False
+
+
+async def send_wrong_certificate_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str = ''
+) -> int:
+    """Send to chat menu for case of incorrect certificate ID."""
+    if context.chat_data['language'] == 'russian':
+        text_beginning = text if text else 'Что-то пошло не так\n'
+        text = (
+            f'{text_beginning}Проверь, пожалуйста, правильно ли ты ввёл ID и '
+            'действителен ли срок действия сертификата\n\n'
+            'Если тебе нужна помощь, нажми кнопку "Позвать человека"'
+        )
+        buttons = ['Ввести ID снова', 'Позвать человека']
+    else:
+        text_beginning = text if text else 'Something went wrong\n'
+        text = (
+            f'{text_beginning}Please check if you have entered the ID '
+            'correctly and if the certificate expiry date is valid\n\n'
+            'If you need help, click the "Call a person" button'
+        )
+        buttons = ['Enter ID again', 'Call a person']
+
+    keyboard = [[
+        InlineKeyboardButton(buttons[0], callback_data='certificate-id'),
+        InlineKeyboardButton(buttons[1], callback_data='call-person')
+    ]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text=text,
+            reply_markup=reply_markup
+        )
+        return WRONG_CERTIFICATE_MENU
+
+    await update.message.reply_text(text=text, reply_markup=reply_markup)
+    return WRONG_CERTIFICATE_MENU
+
+
+async def handle_wrong_certificate_menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle Wrong certificate menu."""
+    if not update.callback_query:
+        text = get_misunderstanding_message(context.chat_data['language'])
+        next_state = await send_wrong_certificate_menu(update, context, text)
+        return next_state
+
+    await update.callback_query.answer()
+
+    if update.callback_query.data == 'certificate-id':
+        next_state = await send_certificate_id_request(update, context)
+        return next_state
+
+    if update.callback_query.data == 'call-person':
+        next_state = await send_calling_person_message(update, context)
+        return next_state
+
+
+async def send_calling_person_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Send a chat message when calling a person."""
+    if context.chat_data['language'] == 'russian':
+        text = 'Спасибо за обращение, поддержка ответит в ближайшее время'
+    else:
+        text = 'Thank you for contacting us, support will respond shortly'
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text)
+        return DIALOGUE_END
+
+    await update.message.reply_text(text=text)
+    return DIALOGUE_END
 
 
 async def handle_faq_button(
