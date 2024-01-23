@@ -1,8 +1,10 @@
 # coding=utf-8
 """Organize the work of the impressions telegram bot."""
+import io
 import logging
 import os
 import re
+from typing import Dict
 
 import phonenumbers
 from dotenv import load_dotenv
@@ -96,6 +98,7 @@ async def handle_language_menu(
         return next_state
 
     await update.callback_query.answer()
+    context.chat_data.clear()
     context.chat_data['language'] = update.callback_query.data
 
     next_state = await send_main_menu(update, context)
@@ -210,20 +213,16 @@ async def send_impressions_menu(
     keyboard = []
     buttons_in_row = calculate_buttons_in_row(buttons_count=len(impressions))
     for impression_index, impression in enumerate(impressions):
-        impression_title = normalise_text(
-            f"{impression['id']}. "
-            f"{impression['name']} "
-            f"- {impression['price']}"
-        )
+        impression_title = normalise_text(make_impression_title(impression))
         text += f"[{impression_title}]({impression['url']})\n"
         if not (impression_index % buttons_in_row):
             keyboard.append([])
         keyboard[-1].append(InlineKeyboardButton(
-            f"{impression['id']}",
-            callback_data=impression_title)
+            f"{impression['number']}",
+            callback_data=f"{impression['id']}")
         )
 
-    keyboard.append([InlineKeyboardButton(button, callback_data='main-menu')])
+    keyboard.append([InlineKeyboardButton(button, callback_data='main_menu')])
 
     text += '\n'
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -241,6 +240,15 @@ async def send_impressions_menu(
         reply_markup=reply_markup
     )
     return SELECTING_IMPRESSION
+
+
+def make_impression_title(impression: Dict) -> str:
+    """Make impression title."""
+    return (
+        f"{impression['number']}. "
+        f"{impression['name']} "
+        f"- {impression['price']}"
+    )
 
 
 def normalise_text(text: str) -> str:
@@ -283,21 +291,16 @@ async def handle_impressions_menu(
 
     await update.callback_query.answer()
 
-    if update.callback_query.data == 'main-menu':
+    if update.callback_query.data == 'main_menu':
         next_state = await send_main_menu(update, context)
         return next_state
 
-    point_index = update.callback_query.data.find(normalise_text('.'))
-    if point_index == -1:
+    impression_id = update.callback_query.data
+    if not impression_id.isnumeric():
         next_state = await handle_unrecognized_impression(update, context)
         return next_state
 
-    impression_number = update.callback_query.data[:point_index]
-    if not impression_number.isnumeric():
-        next_state = await handle_unrecognized_impression(update, context)
-        return next_state
-
-    context.chat_data['impression'] = update.callback_query.data
+    context.chat_data['impression_id'] = impression_id
     next_state = await send_receiving_methods_menu(update, context)
     return next_state
 
@@ -328,11 +331,16 @@ async def send_receiving_methods_menu(
     text: str = ''
 ) -> int:
     """Send to chat Menu of ways to receive order."""
+    impression = await Database.get_impression(
+        context.chat_data['impression_id'],
+        context.chat_data['language']
+    )
+    impression_title = make_impression_title(impression)
     if context.chat_data['language'] == 'russian':
         text = normalise_text(
             f'{text}Отличный выбор! Ты выбрал(а) ' +
             'сертификат:\n*' +
-            context.chat_data['impression'] +
+            impression_title +
             '*\n\nВ какой форме хочешь получить его?'
         )
         buttons = [
@@ -345,7 +353,7 @@ async def send_receiving_methods_menu(
         text = normalise_text(
             f'{text}Great choice! You chose ' +
             'the certificate:\n*' +
-            context.chat_data['impression'] +
+            impression_title +
             '*\n\nIn what form do you want to receive it?'
         )
         buttons = [
@@ -358,13 +366,13 @@ async def send_receiving_methods_menu(
     keyboard = [
         [
             InlineKeyboardButton(buttons[0], callback_data='email'),
-            InlineKeyboardButton(buttons[1], callback_data='gift-box'),
+            InlineKeyboardButton(buttons[1], callback_data='gift_box'),
         ],
         [
             InlineKeyboardButton(buttons[2], callback_data='impression')
         ],
         [
-            InlineKeyboardButton(buttons[3], callback_data='main-menu')
+            InlineKeyboardButton(buttons[3], callback_data='main_menu')
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -406,7 +414,7 @@ async def handle_receiving_methods_menu(
 
     await update.callback_query.answer()
 
-    if update.callback_query.data == 'main-menu':
+    if update.callback_query.data == 'main_menu':
         next_state = await send_main_menu(update, context)
         return next_state
 
@@ -418,7 +426,7 @@ async def handle_receiving_methods_menu(
         next_state = await handle_email_button(update, context)
         return next_state
 
-    if update.callback_query.data == 'gift-box':
+    if update.callback_query.data == 'gift_box':
         next_state = await handle_gift_box_button(update, context)
         return next_state
 
@@ -428,7 +436,7 @@ async def handle_email_button(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle Email button click."""
-    context.chat_data['receiving-method'] = 'email'
+    context.chat_data['receiving_method'] = 'email'
     if context.chat_data['language'] == 'russian':
         text = 'Напиши почту, на которую хотел(а) бы получить сертификат:'
     else:
@@ -459,7 +467,7 @@ async def handle_customer_email_message(
         await update.message.reply_text(text=text)
         return WAITING_CUSTOMER_EMAIL
 
-    context.chat_data['email'] = match.groups()[0]
+    context.chat_data['customer_email'] = match.groups()[0]
     next_state = await send_privacy_policy(update, context)
     return next_state
 
@@ -469,7 +477,7 @@ async def handle_gift_box_button(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle Gift-box button click."""
-    context.chat_data['receiving-method'] = 'gift-box'
+    context.chat_data['receiving_method'] = 'gift_box'
     next_state = await send_privacy_policy(update, context)
     return next_state
 
@@ -541,7 +549,7 @@ async def handle_customer_fullname_message(
         await send_fullname_error_message(update, context)
         return WAITING_CUSTOMER_FULLNAME
 
-    context.chat_data['customer-fullname'] = customer_fullname
+    context.chat_data['customer_fullname'] = customer_fullname
     next_state = await send_phone_number_request(update, context)
     return next_state
 
@@ -614,10 +622,10 @@ async def handle_customer_phone_message(
         await update.message.reply_text(text=text)
         return WAITING_CUSTOMER_PHONE
 
-    context.chat_data['phone_number'] = (
+    context.chat_data['customer_phone'] = (
         f'+{value.country_code}{value.national_number}'
     )
-    if context.chat_data['receiving-method'] == 'email':
+    if context.chat_data['receiving_method'] == 'email':
         next_state = await send_payment_details(update, context)
         return next_state
 
@@ -643,7 +651,8 @@ async def send_payment_details(
         )
     else:
         text = normalise_text(
-            f"{text}You can pay for the purchase by the specified details:\n\n*" +
+            f"{text}"
+            "You can pay for the purchase by the specified details:\n\n*" +
             payment_details +
             "\n\n*After payment, send us a screenshot with payment:"
             "confirmation"
@@ -668,8 +677,24 @@ async def handle_payment_screenshot(
         await send_payment_details(update, context, text)
 
     file_id = update.message.photo[-1].file_id
-    file = await context.bot.get_file(file_id)
-    screenshot_file = await file.download_to_drive('screenshot.jpg')
+    screenshot_file = await context.bot.get_file(file_id)
+    screenshot_stream = io.BytesIO()
+    await screenshot_file.download_to_memory(out=screenshot_stream)
+    screenshot_stream.seek(0)
+
+    await Database.create_order(
+        chat_id=update.effective_chat['id'],
+        tg_username=update.effective_chat['username'],
+        language=context.chat_data['language'],
+        customer_email=context.chat_data['customer_email'],
+        customer_fullname=context.chat_data['customer_fullname'],
+        customer_phone=context.chat_data['customer_phone'],
+        impression_id=context.chat_data['impression_id'],
+        recipient_fullname=context.chat_data['customer_fullname'],
+        recipient_contact='Получателем является заказчик',
+        email_receiving=True,
+        screenshot_stream=screenshot_stream
+    )
 
     if context.chat_data['language'] == 'russian':
         text = (
@@ -725,8 +750,8 @@ async def send_delivery_methods_menu(
 
     keyboard = [
         [
-            InlineKeyboardButton(buttons[0], callback_data='courier-delivery'),
-            InlineKeyboardButton(buttons[1], callback_data='self-delivery'),
+            InlineKeyboardButton(buttons[0], callback_data='courier_delivery'),
+            InlineKeyboardButton(buttons[1], callback_data='self_delivery'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -762,11 +787,12 @@ async def handle_delivery_methods_menu(
 
     await update.callback_query.answer()
 
-    if update.callback_query.data == 'courier-delivery':
+    context.chat_data['delivery_method'] = update.callback_query.data
+    if update.callback_query.data == 'courier_delivery':
         next_state = await handle_courier_delivery_button(update, context)
         return next_state
 
-    if update.callback_query.data == 'self-delivery':
+    if update.callback_query.data == 'self_delivery':
         next_state = await send_self_delivery_menu(update, context)
         return next_state
 
@@ -790,11 +816,11 @@ async def handle_recipient_fullname_message(
 ) -> int:
     """Handle the WAITING_RECIPIENT_FULLNAME state."""
     recipient_fullname = update.message.text.strip()
-    if len(recipient_fullname) < 4 or ' ' not in recipient_fullname:
+    if len(recipient_fullname) < 1:
         await send_fullname_error_message(update, context)
         return WAITING_RECIPIENT_FULLNAME
 
-    context.chat_data['recipient-fullname'] = recipient_fullname
+    context.chat_data['recipient_fullname'] = recipient_fullname
     next_state = await send_recipient_contact_request(update, context)
     return next_state
 
@@ -838,7 +864,7 @@ async def handle_recipient_contact_message(
         await update.message.reply_text(text=text)
         return WAITING_RECIPIENT_CONTACT
 
-    context.chat_data['recipient-contact'] = recipient_contact
+    context.chat_data['recipient_contact'] = recipient_contact
     next_state = await send_successful_booking_message(update, context)
     return next_state
 
@@ -848,6 +874,27 @@ async def send_successful_booking_message(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Send to chat Message about successful booking."""
+    if context.chat_data['delivery_method'] == 'courier_delivery':
+        recipient_fullname = context.chat_data['recipient_fullname']
+        recipient_contact = context.chat_data['recipient_contact']
+    else:
+        recipient_fullname = context.chat_data['customer_fullname']
+        recipient_contact = 'Получателем является заказчик'
+
+    await Database.create_order(
+        chat_id=update.effective_chat['id'],
+        tg_username=update.effective_chat['username'],
+        language=context.chat_data['language'],
+        customer_email='',
+        customer_fullname=context.chat_data['customer_fullname'],
+        customer_phone=context.chat_data['customer_phone'],
+        impression_id=context.chat_data['impression_id'],
+        recipient_fullname=recipient_fullname,
+        recipient_contact=recipient_contact,
+        email_receiving=False,
+        delivery_method=context.chat_data['delivery_method']
+    )
+
     if context.chat_data['language'] == 'russian':
         text = (
             'Мы забронировали сертификат ✨\n\n'
@@ -881,7 +928,7 @@ async def send_self_delivery_menu(
             f'{text}Самовывоз доступен по адресу:\n' +
             self_delivery_point['address'] +
             '\n\nЧасы работы:\n' +
-            self_delivery_point['opening-hours']
+            self_delivery_point['opening_hours']
         )
         buttons = ['Мне подходит', '‹ Назад к способам доставки']
     else:
@@ -889,13 +936,13 @@ async def send_self_delivery_menu(
             f'{text}Self-collection is available at the address:\n' +
             self_delivery_point['address'] +
             '\n\nOpening hours:\n' +
-            self_delivery_point['opening-hours']
+            self_delivery_point['opening_hours']
         )
         buttons = ['It works for me', '‹ Back to delivery methods']
 
     keyboard = [[
-        InlineKeyboardButton(buttons[0], callback_data='self-delivery-yes'),
-        InlineKeyboardButton(buttons[1], callback_data='self-delivery-no'),
+        InlineKeyboardButton(buttons[0], callback_data='self_delivery_yes'),
+        InlineKeyboardButton(buttons[1], callback_data='self_delivery_no'),
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     if update.callback_query:
@@ -924,11 +971,11 @@ async def handle_self_delivery_menu(
 
     await update.callback_query.answer()
 
-    if update.callback_query.data == 'self-delivery-yes':
+    if update.callback_query.data == 'self_delivery_yes':
         next_state = await send_successful_booking_message(update, context)
         return next_state
 
-    if update.callback_query.data == 'self-delivery-no':
+    if update.callback_query.data == 'self_delivery_no':
         next_state = await send_delivery_methods_menu(update, context)
         return next_state
 
@@ -973,18 +1020,58 @@ async def handle_certificate_id_message(
 ) -> int:
     """Handle the WAITING_CERTIFICATE_ID state."""
     certificate_id = update.message.text.strip()
-    good_certificate_id = await check_certificate_id(certificate_id)
-    if not good_certificate_id:
-        next_state = await send_wrong_certificate_menu(update, context)
+    activation_results = await Database.activate_certificate(
+        chat_id=update.effective_chat['id'],
+        tg_username=update.effective_chat['username'],
+        language=context.chat_data['language'],
+        certificate_id=certificate_id
+    )
+    if activation_results['availability']:
+        next_state = await send_good_certificate_message(
+            update,
+            context,
+            activation_results['impression_name']
+        )
         return next_state
 
-    # TODO Write code for good certificate id
+    next_state = await send_wrong_certificate_menu(update, context)
+    return next_state
 
 
-async def check_certificate_id(certificate_id: int) -> bool:
-    """Check certificate ID."""
-    # TODO Write real checking
-    return False
+async def send_good_certificate_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    impression_name: str
+) -> int:
+    """Send to chat menu for case of correct certificate ID."""
+    if context.chat_data['language'] == 'russian':
+        text = normalise_text(
+            'Твое впечатление это -\n'
+            f'*{impression_name}*\n'
+            'Прекрасный выбор!\n\n'
+            'В течение часа с тобой свяжется оператор\n'
+            'и расскажет все детали.\n'
+            'До скорых встреч ✋'
+        )
+    else:
+        text = normalise_text(
+            'Your impression is\n'
+            f'*{impression_name}*\n'
+            'Excellent choice!\n\n'
+            'An operator will contact you within an hour\n'
+            'with all the details.\n'
+            'See you soon ✋'
+        )
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text=text,
+            parse_mode='MarkdownV2'
+        )
+        return DIALOGUE_END
+
+    await update.message.reply_text(text=text, parse_mode='MarkdownV2')
+    return DIALOGUE_END
 
 
 async def send_wrong_certificate_menu(
@@ -996,8 +1083,8 @@ async def send_wrong_certificate_menu(
     if context.chat_data['language'] == 'russian':
         text_beginning = text if text else 'Что-то пошло не так\n'
         text = (
-            f'{text_beginning}Проверь, пожалуйста, правильно ли ты ввёл ID и '
-            'действителен ли срок действия сертификата\n\n'
+            f'{text_beginning}Проверь, пожалуйста, правильно ли ты ввел(а) '
+            'ID и действителен ли срок действия сертификата\n\n'
             'Если тебе нужна помощь, нажми кнопку "Позвать человека"'
         )
         buttons = ['Ввести ID снова', 'Позвать человека']
@@ -1011,8 +1098,8 @@ async def send_wrong_certificate_menu(
         buttons = ['Enter ID again', 'Call Person']
 
     keyboard = [[
-        InlineKeyboardButton(buttons[0], callback_data='certificate-id'),
-        InlineKeyboardButton(buttons[1], callback_data='call-person')
+        InlineKeyboardButton(buttons[0], callback_data='certificate_id'),
+        InlineKeyboardButton(buttons[1], callback_data='call_person')
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     if update.callback_query:
@@ -1038,11 +1125,12 @@ async def handle_wrong_certificate_menu(
 
     await update.callback_query.answer()
 
-    if update.callback_query.data == 'certificate-id':
+    if update.callback_query.data == 'certificate_id':
         next_state = await send_certificate_id_request(update, context)
         return next_state
 
-    if update.callback_query.data == 'call-person':
+    if update.callback_query.data == 'call_person':
+        context.chat_data['request_type'] = 'activation_problem'
         next_state = await send_calling_person_message(update, context)
         return next_state
 
@@ -1052,6 +1140,13 @@ async def send_calling_person_message(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Send a chat message when calling a person."""
+    await Database.create_support_application(
+        chat_id=update.effective_chat['id'],
+        tg_username=update.effective_chat['username'],
+        language=context.chat_data['language'],
+        request_type=context.chat_data['request_type']
+    )
+
     if context.chat_data['language'] == 'russian':
         text = 'Спасибо за обращение, поддержка ответит в ближайшее время'
     else:
@@ -1071,37 +1166,46 @@ async def send_questions_menu(
     text: str = ''
 ) -> int:
     """Handle the FAQ button click."""
+    faq_details = await Database.get_faq_details(
+        context.chat_data['language']
+    )
+
+    keyboard = []
+    buttons_in_row = calculate_buttons_in_row(buttons_count=len(faq_details))
+    for question_index, faq_detail in enumerate(faq_details):
+        text += f"{question_index+1}. {faq_detail['question']}\n"
+        if not (question_index % buttons_in_row):
+            keyboard.append([])
+        keyboard[-1].append(
+            InlineKeyboardButton(
+                f"{question_index+1}",
+                callback_data=f"{faq_detail['id']}"
+            )
+        )
+
     if context.chat_data['language'] == 'russian':
-        text = (
-            f'{text}Выбери вопрос и нажми на кнопку с соответствующим номером:\n\n'
-            '1. Вопрос 1 из базы данных\n2. Вопрос 2 из базы данных\n'
-            '3. Вопрос 3 из базы данных\n4. Вопрос 4 из базы данных\n'
-            '5. Вопрос 5 из базы данных\n'
+        text += (
+            '\nВыбери вопрос и нажми на кнопку с его номером:\n'
+            if faq_details
+            else 'Извини, FAQ пока пусто.\n'
         )
         buttons = ['Позвать человека', '« Вернуться в главное меню']
     else:
-        text = (
-            f'{text}Click on the button with the question number:\n\n'
-            '1. Question 1 from the database\n'
-            '2. Question 2 from the database\n'
-            '3. Question 3 from the database\n'
-            '4. Question 4 from the database\n'
-            '5. Question 5 from the database\n'
+        text += (
+            "\nClick on the button with the question number:\n"
+            if faq_details
+            else 'Sorry, the FAQ is empty for now.\n'
         )
         buttons = ['Call Person', '« Back to main menu']
 
-    keyboard = [
-        [
-            InlineKeyboardButton('1', callback_data='question-1'),
-            InlineKeyboardButton('2', callback_data='question-2'),
-            InlineKeyboardButton('3', callback_data='question-3'),
-            InlineKeyboardButton('4', callback_data='question-4'),
-            InlineKeyboardButton('5', callback_data='question-5')
-        ],
-        [InlineKeyboardButton(buttons[0], callback_data='call-person')],
-        [InlineKeyboardButton(buttons[1], callback_data='main-menu')]
-    ]
+    keyboard.append(
+        [InlineKeyboardButton(buttons[0], callback_data='call_person')]
+    )
+    keyboard.append(
+        [InlineKeyboardButton(buttons[1], callback_data='main_menu')]
+    )
     reply_markup = InlineKeyboardMarkup(keyboard)
+
     if update.callback_query:
         await update.callback_query.edit_message_text(
             text,
@@ -1138,11 +1242,12 @@ async def handle_questions_menu(
 
     await update.callback_query.answer()
 
-    if update.callback_query.data == 'main-menu':
+    if update.callback_query.data == 'main_menu':
         next_state = await send_main_menu(update, context)
         return next_state
 
-    if update.callback_query.data == 'call-person':
+    if update.callback_query.data == 'call_person':
+        context.chat_data['request_type'] = 'question_for_operator'
         next_state = await send_calling_person_message(update, context)
         return next_state
 
@@ -1155,30 +1260,39 @@ async def send_answer_menu(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Send a chat message when calling a person."""
+    faq_detail = await Database.get_faq_detail(
+        faq_id=update.callback_query.data,
+        language=context.chat_data['language']
+    )
+    text = normalise_text(
+        f"*{faq_detail['question']}*\n\n{faq_detail['answer']}"
+    )
+
     if context.chat_data['language'] == 'russian':
-        text = 'Это ответ на вопрос из базы данных'
         buttons = [
             '‹ Вернуться к списку вопросов',
             '« Вернуться в главное меню'
         ]
     else:
-        text = 'This is the answer to a question from the database'
         buttons = ['‹ Back to list of questions', '« Back to main menu']
 
     keyboard = [
-        [InlineKeyboardButton(buttons[0], callback_data='questions-list')],
-        [InlineKeyboardButton(buttons[1], callback_data='main-menu')]
+        [InlineKeyboardButton(buttons[0], callback_data='questions_list')],
+        [InlineKeyboardButton(buttons[1], callback_data='main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
+
     if update.callback_query:
         await update.callback_query.edit_message_text(
             text,
+            parse_mode='MarkdownV2',
             reply_markup=reply_markup
         )
         return ANSWER_MENU
 
     await update.message.reply_text(
         text=text,
+        parse_mode='MarkdownV2',
         reply_markup=reply_markup
     )
     return ANSWER_MENU
@@ -1196,11 +1310,11 @@ async def handle_answer_menu(
 
     await update.callback_query.answer()
 
-    if update.callback_query.data == 'main-menu':
+    if update.callback_query.data == 'main_menu':
         next_state = await send_main_menu(update, context)
         return next_state
 
-    if update.callback_query.data == 'questions-list':
+    if update.callback_query.data == 'questions_list':
         next_state = await send_questions_menu(update, context)
         return next_state
 
