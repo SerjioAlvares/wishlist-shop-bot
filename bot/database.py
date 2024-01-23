@@ -219,25 +219,25 @@ class Database():
     @sync_to_async
     def get_impression(self, impression_id: int, language: str) -> Dict:
         """Get impression from database."""
-        impressions = Impression.objects.filter(
+        impression = Impression.objects.filter(
             id=int(impression_id),
             availability=True
         ).first()
-        if not impressions:
+        if not impression:
             return {}
 
         if language == 'russian':
             return {
-                'id': impressions[0].id,
-                'number': impressions[0].number,
-                'name': impressions[0].name,
-                'price': f'{impressions[0].price_in_rubles} ₽'
+                'id': impression.id,
+                'number': impression.number,
+                'name': impression.name,
+                'price': f'{impression.price_in_rubles} ₽'
             }
         return {
-            'id': impressions[0].id,
-            'number': impressions[0].number,
-            'name': impressions[0].english_name,
-            'price': f'{impressions[0].price_in_euros} €'
+            'id': impression.id,
+            'number': impression.number,
+            'name': impression.english_name,
+            'price': f'{impression.price_in_euros} €'
         }
 
     @sync_to_async
