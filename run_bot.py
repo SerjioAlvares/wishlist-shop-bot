@@ -78,7 +78,7 @@ async def handle_start_command(
     context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle the start command."""
-    text = 'Выбери, пожалуйста, язык / Please, select language'
+    text = 'Выбери, пожалуйста, язык / Please, select a language'
     keyboard = [[
         InlineKeyboardButton('🇷🇺 Русский', callback_data='russian'),
         InlineKeyboardButton('🇬🇧 English', callback_data='english')
